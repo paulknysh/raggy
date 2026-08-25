@@ -211,7 +211,19 @@ def test_load_documents_directory_includes_new_formats(tmp_path):
 def _make_ocr_image(path) -> None:
     from PIL import Image, ImageDraw, ImageFont
 
-    font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 48)
+    font = None
+    for candidate in (
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    ):
+        try:
+            font = ImageFont.truetype(candidate, 48)
+            break
+        except OSError:
+            continue
+    if font is None:
+        font = ImageFont.load_default()
     img = Image.new("RGB", (1000, 300), "white")
     draw = ImageDraw.Draw(img)
     draw.text((20, 30), "HELLO WORLD", fill="black", font=font)
