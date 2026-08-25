@@ -1,0 +1,28 @@
+﻿Xiao et al.
+
+
+
+[11] Yury Gorishniy, Ivan Rubachev, Artem Babenko, and Vasily Svirin. 2024. Retrieval-Augmented Tabular Models for Forecasting and Decision-Making. arXiv preprint arXiv:2401.09876 (2024).
+[12] Kelvin Guu, Kenton Lee, Zora Tung, Panupong Pasupat, and Ming-Wei Chang. 2020. REALM: Retrieval-augmented language model pre-training. In Proceedings of the International Conference on Machine Learning (ICML).
+[13] Hassaan Hewamalage, Christoph Bergmeir, and Kasun Bandara. 2021. Recurrent neural networks for time series forecasting: Current status and future directions. International Journal of Forecasting 37, 1 (2021), 388–427.
+[14] Wenhu Huang, Linyi Wang, Yichi Li, Pengcheng He, Wenhao Wu, Jianfeng Yang, Lu Wang, and Jordan Boyd-Graber. 2023. LAPDOG: Personalized Dialogue Generation via Retrieval-Augmented Memory. arXiv preprint arXiv:2305.19253 (2023).
+[15] BingxinJing,ZhaoZhou,ShuaiLiu,WeiqingLiu,YutaoLi,FangliChen,Xuanjing Zhang, and Jingen Zhou. 2022. ReTime: Retrieval-based Temporal Representa-tion Learning for Time-Series Forecasting. In Proceedings of the ACM SIGKDD International Conference on Knowledge Discovery and Data Mining (KDD).
+[16] Vladimir Karpukhin, Barlas Oguz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Angela Fan, Edouard Grave, Armand Joulin, and Luke Zettlemoyer. 2020. Dense passage retrieval for open-domain question answering. In Proceedings of the Conference on Empirical Methods in Natural Language Processing (EMNLP).
+[17] Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Heinrich Küttler, Mike Lewis, Wen-tau Yih, Tim Rocktäschel, and Sebastian Riedel. 2020. Retrieval-augmented generation for knowledge-intensive NLP tasks. Advances in Neural Information Processing Systems (NeurIPS) (2020).
+[18] Shiwen Li, Jinpeng Jin, Yuan Xuan, Xiaolin Zhou, Weike Chen, Yan Wang, and Shuicheng Yan. 2019. Enhancing the locality and breaking the memory bottle-neck of transformer on time series forecasting. Advances in Neural Information Processing Systems 32 (2019).
+[19] Xuan Li, Jie Sun, and Zheng Liu. 2020. Time Imaging for Time Series Forecasting. In Proceedings of the 37th International Conference on Machine Learning, Vol. 119. 5986–5995. https://proceedings.mlr.press/v119/li20a.html
+[20] Yong Liu, Tengge Hu, Haoran Zhang, Haixu Wu, Shiyu Wang, Lintao Ma, and Mingsheng Long. 2024. iTransformer: Inverted Transformers Are Effective for Time Series Forecasting. doi:10.48550/arXiv.2310.06625 arXiv:2310.06625 [cs].
+[21] M. Nader, X. Chen, and D. Smith. 2022. Kernel-Based Retrieval-Augmented Neural Networks for Tabular Data. In Advances in Neural Information Processing Systems (NeurIPS).
+
+[22] Yuqi Nie, Nam H. Nguyen, Phanwadee Sinthong, and Jayant Kalagnanam. 2023. A Time Series is Worth 64 Words: Long-term Forecasting with Transformers. http://arxiv.org/abs/2211.14730 arXiv:2211.14730 [cs].
+[23] Kutay Tire, Ege Onur Taga, Muhammed Emrullah Ildiz, and Samet Oymak. 2024. Retrieval Augmented Time Series Forecasting. arXiv:2411.08249 [cs.LG] https://arxiv.org/abs/2411.08249
+[24] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Lukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. Advances in Neural Information Processing Systems 30 (2017).
+[25] Yuxuan Wang, Haixu Liu, and Jiaxiang Zhang. 2024. TimeMixer: Gener-alized MLP-mixer architecture for time series forecasting. arXiv preprint arXiv:2401.12877 (2024).
+[26] Yuxuan Wang, Haixu Wu, Jiaxiang Dong, Guo Qin, Haoran Zhang, Yong Liu, Yunzhong Qiu, Jianmin Wang, and Mingsheng Long. 2024. TimeXer: Em-powering Transformers for Time Series Forecasting with Exogenous Variables. arXiv:2402.19072 [cs.LG] https://arxiv.org/abs/2402.19072
+[27] Jin Woo, Minho Choi, and Hyejin Lee. 2024. MOIRAI: Large open-source time series foundation models. arXiv preprint arXiv:2401.09765 (2024).
+[28] Haixu Wu, Jianmin Xu, Yuxuan Wang, and Mingsheng Long. 2021. Autoformer: Decomposition transformers with auto-correlation for long-term series forecast-ing. Advances in Neural Information Processing Systems 34 (2021), 22419–22430.
+[29] Ailing Zeng, Qingsong Yang, Hao Zhou, Zhiqiang Zhang, Hongyuan Xu, Yuyue Tong, Jianxin Xu, and Xiaolong Wang. 2023. Are transformers effective for time series forecasting? Advances in Neural Information Processing Systems 36 (2023).
+[30] Yi Zhang, Rong Jin, and Zhi-Hua Zhou. 2016. kNN-based Feature Selection Approach for Text Categorization. In Proceedings of the AAAI Conference on Artificial Intelligence.
+[31] Haoyi Zhou, Shanghang Zhang, Jieqi Peng, Shuai Zhang, Jianhui Li, Hanting Xiong, Wensheng Zhang, Yan Zhang, Yang Bai, and Qiao Li. 2021. Informer: Be-yond efficient transformer for long sequence time-series forecasting. Proceedings of AAAI Conference on Artificial Intelligence (2021).
+[32] Tian Zhou, Ziqing Ma, Qingsong Wen, Liang Sun, Rui Jin, Zaiqiao Ding, Shirui Pan, and Yao Jin. 2022. Fedformer: Frequency enhanced decomposed transformer for long-term series forecasting. International Conference on Machine Learning (2022), 26420–26431.
+[33] Zhi Zhou and Tian Xu. 2021. Multi-scale Mixing for Time Series Forecasting. Journal of Machine Learning Research 22, 1 (2021), 1–25. https://www.jmlr.org/ papers/volume22/20-017/20-017.pdf

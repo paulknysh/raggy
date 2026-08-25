@@ -1,0 +1,58 @@
+[
+  {
+    "id": "qa_001",
+    "question": "Is usage of retrieval-augmented generation (RAG) for time series forecasting very common?",
+    "reference": "No, it's rather limited.",
+    "answer_can_be_verified": true,
+    "ground_truth_sources": ["ts_rag-pages-1.pdf"]
+  },
+  {
+    "id": "qa_002",
+    "question": "According to the related work section, what mechanism did Informer introduce to improve computational efficiency in time series forecasting?",
+    "reference": "Informer introduced the probSparse self-attention mechanism, which reduces computational complexity while preserving predictive accuracy.",
+    "answer_can_be_verified": true,
+    "ground_truth_sources": ["ts_rag-pages-2.md"]
+  },
+  {
+    "id": "qa_003",
+    "question": "According to TS-RAG's problem definition, what does retrieval-augmented forecasting integrate to enhance predictive performance?",
+    "reference": "It integrates relevant past sequences, retrieved from a historical database, that share similar trends with the input sequence.",
+    "answer_can_be_verified": true,
+    "ground_truth_sources": ["ts_rag-pages-3.jpg"]
+  },
+  {
+    "id": "qa_004",
+    "question": "How many datasets were used for long-term time series forecasting experiments?",
+    "reference": "Six datasets were used",
+    "answer_can_be_verified": true,
+    "ground_truth_sources": ["ts_rag-pages-4.png"]
+  },
+  {
+    "id": "qa_005",
+    "question": "What GPU hardware was used to run the TS-RAG experiments?",
+    "reference": "An NVIDIA V100 GPU with 32GB of memory.",
+    "answer_can_be_verified": true,
+    "ground_truth_sources": ["ts_rag-pages-5.docx"]
+  },
+  {
+    "id": "qa_006",
+    "question": "Is Dynamic Time Warping computationally less expensive than TS-RAG?",
+    "reference": "No, Dynamic Time Warping is more computationally expensive compared to TS-RAG",
+    "answer_can_be_verified": true,
+    "ground_truth_sources": ["ts_rag-pages-6.pptx"]
+  },
+  {
+    "id": "qa_007",
+    "question": "What kind of comparison Does Table 2 provide?",
+    "reference": "Table 2 provides comparison of model performance with different retrieval approaches.",
+    "answer_can_be_verified": true,
+    "ground_truth_sources": ["ts_rag-pages-7.html"]
+  },
+  {
+    "id": "qa_008",
+    "question": "Does list of references include study by Nader, Chen, and Smith from 2022?",
+    "reference": "Yes it does.",
+    "answer_can_be_verified": true,
+    "ground_truth_sources": ["ts_rag-pages-8.txt"]
+  }
+]

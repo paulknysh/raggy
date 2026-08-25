@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raggy"
+version = "0.1.0"
+description = "A small RAG pipeline built with LangChain, Chroma, and Ollama."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Paul Knysh" }]
+license = { file = "LICENSE" }
+keywords = ["rag", "langchain", "chroma", "ollama", "retrieval-augmented-generation"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "langchain-community",
+    "langchain-text-splitters",
+    "langchain-ollama",
+    "langchain-chroma",
+    "langchain-core",
+    "langchain-classic",
+    "pypdf",
+    "PyYAML",
+    "tqdm",
+    "onnxruntime",
+    "huggingface-hub",
+    "tokenizers",
+    "rich>=15.0.0",
+    "docx2txt>=0.9",
+    "python-pptx>=1.0.2",
+    "beautifulsoup4>=4.15.0",
+    "python-docx>=1.2.0",
+    "rapidocr-onnxruntime>=1.4.4",
+    "pymupdf>=1.28.2",
+]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:`langchain-community` is being sunset:DeprecationWarning",
+    "ignore:builtin type .* has no __module__ attribute:DeprecationWarning",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["raggy*"]
+
+[dependency-groups]
+dev = [
+    "reportlab>=5.0.0",
+]
+
+[project.scripts]
+raggy = "raggy.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/paulknysh/raggy"
+Repository = "https://github.com/paulknysh/raggy"
+Issues = "https://github.com/paulknysh/raggy/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff>=0.16.1",
+    "reportlab",
+]
