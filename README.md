@@ -1,12 +1,15 @@
 # raggy
 
-A lightweight Retrieval-Augmented Generation (RAG) package built with LangChain, Chroma, and Ollama.
+A lightweight Retrieval-Augmented Generation (RAG) package that runs fully
+locally on your own documents using LangChain, Chroma, and Ollama. It supports
+common formats (PDF, Word, PowerPoint, plain text, images) and uses OCR
+automatically when needed.
 
-Runs fully locally, supports common document formats (PDF, MS Word/Powerpoint, plain text, images) and uses OCR automatically when needed.
+Supported file formats — all other files are ignored:
 
-Supports the following file formats (all other file formats are ignored): `.pdf`, `.docx`, `.pptx`, `.txt`, `.md`, `.markdown`, `.html`, `.htm`, `.png`, `.jpg`, `.jpeg`, `.bmp`.
+`.pdf`, `.docx`, `.pptx`, `.txt`, `.md`, `.markdown`, `.html`, `.htm`, `.png`, `.jpg`, `.jpeg`, `.bmp`.
 
-Mainly built for self-education and experimenting.
+Built primarily for self-education and experimentation.
 
 
 ## Setting up Ollama
@@ -69,7 +72,7 @@ make sure
 
 Type `raggy` command to run interactive CLI:
 
-<img src="assets/cli_demo.png">
+<img src="assets/cli_demo.png" width="850">
 
 Or use it as a library:
 
