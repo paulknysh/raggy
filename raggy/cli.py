@@ -5,12 +5,13 @@ import readline  # noqa: F401  enables arrow-key editing/history in input()
 
 from rich.box import SIMPLE_HEAD
 from rich.console import Console
+from rich.live import Live
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
-from rich.text import Text
 
-from .raggy import refresh_db, run_pipeline, source_label
+from .raggy import refresh_db, run_pipeline_stream, source_label
 
 logger = logging.getLogger(__name__)
 
@@ -19,14 +20,13 @@ ACCENT = "blue"
 console = Console()
 
 
-def print_answer(response: str) -> None:
-    panel = Panel(
-        Text(response),
+def _answer_panel(text: str) -> Panel:
+    return Panel(
+        Markdown(text),
         title=f"[bold {ACCENT}]Answer[/bold {ACCENT}]",
         border_style=ACCENT,
         padding=(1, 2),
     )
-    console.print(panel)
 
 
 def print_citations(retrieved_docs) -> None:
@@ -83,8 +83,10 @@ def run_chat() -> None:
 
         try:
             rebuilt = refresh_db()
+            doc_sink: list = []
             with console.status(f"[{ACCENT}]Retrieving...[/{ACCENT}]"):
-                response, retrieved_docs = run_pipeline(query)
+                stream = run_pipeline_stream(query, doc_sink=doc_sink)
+                first_chunk = next(stream)
         except FileNotFoundError as e:
             console.print(f"[red]Error:[/red] {e}")
             return
@@ -97,8 +99,24 @@ def run_chat() -> None:
             console.print(
                 f"[{ACCENT}]Source documents changed - DB re-indexed.[/{ACCENT}]"
             )
-        console.print()
-        print_answer(response)
+
+        response_parts = [first_chunk]
+        try:
+            with Live(_answer_panel(response_parts[0]), refresh_per_second=12) as live:
+                for chunk in stream:
+                    response_parts.append(chunk)
+                    live.update(_answer_panel("".join(response_parts)))
+        except KeyboardInterrupt:
+            console.print(
+                f"\n[{ACCENT}]Answer interrupted; showing what was generated.[/{ACCENT}]"
+            )
+        except Exception as e:
+            logger.exception("An unexpected error occurred")
+            console.print(f"[red]Error:[/red] {e}")
+            return
+
+        retrieved_docs = doc_sink[-1] if doc_sink else []
+
         console.print()
         print_citations(retrieved_docs)
         console.print()

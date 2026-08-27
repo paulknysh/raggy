@@ -114,7 +114,7 @@ working directory when you run the `raggy` CLI or import the library):
 
 This article (https://arxiv.org/abs/2608.06223v1) is used here for testing. It's an 8-page document -- each page
 is saved in different file formats (including PDF, plaintext, images, MS Word) and saved inside
-`sample_docs_pt1` and `sample_docs_pt2` directories. These directories are specified in `config.yaml` by default.
+`sample_docs` directory. These directories are specified in `config.yaml` by default.
 
 ## Demo eval
 
@@ -167,11 +167,12 @@ Any changes to its content, including changes to `content_hash` will cause DB to
 
 ## Planned TODOs
 
-- More optimizations (improved runtime, incremental DB re-indexing etc)
+- Option to use API keys instead of local LLM
+- Hybrid retrieval, additional pipeline tuning
 - `config.yaml` validation
 - Conversation memory in chat mode
-- Hybrid retrieval, additional pipeline tuning
+- More optimizations (improved runtime, incremental DB re-indexing etc)
 
 ## License
 
-MIT (see `LICENSE`).
+MIT

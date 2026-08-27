@@ -290,6 +290,40 @@ def test_refresh_db_skips_rebuild_when_fresh(monkeypatch):
     assert calls["init"] == 0
 
 
+def test_run_pipeline_stream_yields_chunks_and_captures_docs(monkeypatch):
+    fake_cfg = {
+        "llm_model": "llm-x",
+        "system_prompt": "sys",
+        "search_type": "mmr",
+        "retrieve_k": 2,
+        "mmr_fetch_k": 10,
+        "temperature": 0.0,
+        "rerank_enabled": False,
+        "rerank_model": "rerank-x",
+        "rerank_k": 2,
+    }
+
+    class FakeChain:
+        def stream(self, query):
+            yield "hel"
+            yield "lo"
+
+    def fake_build_rag_chain(**kwargs):
+        sink = kwargs["doc_sink"]
+        sink.append([SimpleNamespace(page_content="doc1")])
+        return FakeChain(), SimpleNamespace(invoke=lambda q: [])
+
+    monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
+    monkeypatch.setattr(raggy, "_get_vectorstore", lambda: object())
+    monkeypatch.setattr(raggy, "build_rag_chain", fake_build_rag_chain)
+
+    doc_sink = []
+    chunks = list(raggy.run_pipeline_stream("hello", doc_sink=doc_sink))
+
+    assert chunks == ["hel", "lo"]
+    assert [doc.page_content for doc in doc_sink[-1]] == ["doc1"]
+
+
 def test_run_pipeline_propagates_unexpected_error(monkeypatch):
     fake_cfg = {
         "llm_model": "llm-x",

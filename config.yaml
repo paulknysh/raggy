@@ -1,7 +1,6 @@
 # Database & Storage Configuration
 sources:
-  - "./sample_docs_pt1"
-  - "./sample_docs_pt2"
+  - "./sample_docs"
 
 persist_directory: "./chroma_db"
 embedding_model: "nomic-embed-text"

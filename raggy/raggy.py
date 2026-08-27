@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -159,3 +160,33 @@ def run_pipeline(query: str) -> tuple[Any, list[Any]]:
     retrieved_docs = doc_sink[-1] if doc_sink else []
 
     return response, retrieved_docs
+
+
+def run_pipeline_stream(query: str, doc_sink: list | None = None) -> Iterator[str]:
+    """Run ``query`` through the RAG pipeline, yielding answer text chunks.
+
+    Mirrors ``run_pipeline`` but streams the LLM output token-by-token so
+    callers (like the CLI) can render it incrementally. The exact context the
+    LLM saw is appended to ``doc_sink`` in a single pass (see
+    ``build_rag_chain``); pass a list in and read ``doc_sink[-1]`` after
+    consuming the stream. Errors propagate to the caller.
+    """
+    cfg = load_config()
+    vectorstore = _get_vectorstore()
+
+    collected: list = [] if doc_sink is None else doc_sink
+    rag_chain, _ = build_rag_chain(
+        vectorstore=vectorstore,
+        llm_model=cfg["llm_model"],
+        system_prompt=cfg["system_prompt"],
+        search_type=cfg["search_type"],
+        k=cfg["retrieve_k"],
+        fetch_k=cfg["mmr_fetch_k"],
+        temperature=cfg["temperature"],
+        rerank_enabled=cfg["rerank_enabled"],
+        rerank_model=cfg["rerank_model"],
+        rerank_k=cfg["rerank_k"],
+        doc_sink=collected,
+    )
+
+    yield from rag_chain.stream(query)
