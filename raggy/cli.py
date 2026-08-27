@@ -14,14 +14,16 @@ from .raggy import refresh_db, run_pipeline, source_label
 
 logger = logging.getLogger(__name__)
 
+ACCENT = "blue"
+
 console = Console()
 
 
 def print_answer(response: str) -> None:
     panel = Panel(
         Text(response),
-        title="[bold blue]Answer[/bold blue]",
-        border_style="blue",
+        title=f"[bold {ACCENT}]Answer[/bold {ACCENT}]",
+        border_style=ACCENT,
         padding=(1, 2),
     )
     console.print(panel)
@@ -32,15 +34,15 @@ def print_citations(retrieved_docs) -> None:
         return
 
     table = Table(
-        title="[bold blue]Citations[/bold blue]",
+        title=f"[bold {ACCENT}]Citations[/bold {ACCENT}]",
         title_style="bold",
-        border_style="blue",
-        header_style="blue",
+        border_style=ACCENT,
+        header_style=ACCENT,
         box=SIMPLE_HEAD,
         pad_edge=False,
     )
-    table.add_column("#", justify="right", style="blue")  # width=3
-    table.add_column("Source", style="blue")
+    table.add_column("#", justify="right", style=ACCENT)  # width=3
+    table.add_column("Source", style=ACCENT)
     table.add_column("Snippet", style="white")
 
     for i, doc in enumerate(retrieved_docs, 1):
@@ -55,33 +57,33 @@ def print_citations(retrieved_docs) -> None:
 def run_chat() -> None:
     console.print(
         Panel.fit(
-            "[bold blue]raggy[/bold blue] - chat with your document(s)\n\n"
-            "You can change document(s) location and tune RAG parameters in "
+            f"[bold {ACCENT}]raggy[/bold {ACCENT}] - chat with your documents!\n\n"
+            "You can specify source folders/files and tune RAG parameters in "
             "[bold]config.yaml[/bold].",
-            border_style="blue",
+            border_style=ACCENT,
         )
     )
     console.print(
-        "[blue]Ask a question, or type [bold]exit[/bold] / press Ctrl+C to quit.\n"
+        f"[{ACCENT}]Ask a question, or type [bold]exit[/bold] / press Ctrl+C to quit.\n"
     )
 
     while True:
         try:
-            query = Prompt.ask("[bold blue]Question[/bold blue]")
+            query = Prompt.ask(f"[bold {ACCENT}]Question[/bold {ACCENT}]")
         except (KeyboardInterrupt, EOFError):
-            console.print("\n[blue]See you![/blue]")
+            console.print(f"\n[{ACCENT}]See you![/{ACCENT}]")
             return
 
         query = query.strip()
         if query.lower() in {"exit", "quit", "q"}:
-            console.print("[blue]See you![/blue]")
+            console.print(f"[{ACCENT}]See you![/{ACCENT}]")
             return
         if not query:
             continue
 
         try:
             rebuilt = refresh_db()
-            with console.status("[blue]Retrieving...[/blue]"):
+            with console.status(f"[{ACCENT}]Retrieving...[/{ACCENT}]"):
                 response, retrieved_docs = run_pipeline(query)
         except FileNotFoundError as e:
             console.print(f"[red]Error:[/red] {e}")
@@ -92,7 +94,9 @@ def run_chat() -> None:
             return
 
         if rebuilt:
-            console.print("[blue]Source documents changed - DB re-indexed.[/blue]")
+            console.print(
+                f"[{ACCENT}]Source documents changed - DB re-indexed.[/{ACCENT}]"
+            )
         console.print()
         print_answer(response)
         console.print()

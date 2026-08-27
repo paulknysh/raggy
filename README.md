@@ -4,6 +4,8 @@ A lightweight Retrieval-Augmented Generation (RAG) package built with LangChain,
 
 Runs fully locally, supports common document formats (PDF, MS Word/Powerpoint, plain text, images) and uses OCR automatically when needed.
 
+Supports the following file formats (all other file formats are ignored): `.pdf`, `.docx`, `.pptx`, `.txt`, `.md`, `.markdown`, `.html`, `.htm`, `.png`, `.jpg`, `.jpeg`, `.bmp`.
+
 Mainly built for self-education and experimenting.
 
 
@@ -68,39 +70,18 @@ pip install -e ".[dev]"
 uv pip install -e ".[dev]"
 ```
 
-## Configuration
-
-All runtime settings are read from `config.yaml` (the file must be present in the
-working directory when you run the `raggy` CLI or import the library):
-
-- `sources` — list of directories and/or files to index. The following file formats are supported,
- (all others are ignored): `.txt`, `.md`, `.markdown`, `.pdf`, `.docx`, `.pptx`, `.html`, `.htm`, `.png`, `.jpg`, `.jpeg`, `.bmp`.
-- `persist_directory` — location where the DB itself is stored
-- `embedding_model` — Ollama embedding model (e.g. `nomic-embed-text`)
-- `chunk_size` — chunk size in characters
-- `chunk_overlap` — character overlap between adjacent chunks
-- `n_batches` — number of batches used when embedding chunks into Chroma
-- `llm_model` — Ollama chat model (e.g. `llama3.2`)
-- `temperature` — LLM sampling temperature
-- `search_type` — retriever search type (e.g. `mmr` or `similarity`)
-- `retrieve_k` — number of chunks returned by the first-stage retrieval
-- `mmr_fetch_k` — number of candidate chunks fetched before MMR reranking (used when `search_type: mmr`)
-- `rerank_enabled` — whether to use reranking after retrieval stage
-- `rerank_model` — Hugging Face ID of the cross-encoder model (default `cross-encoder/ms-marco-MiniLM-L6-v2`)
-- `rerank_k` — final number of chunks returned by the cross-encoder (must be `<= retrieve_k`)
-- `system_prompt` — system prompt dictating how the LLM should answer; must contain a `{context}` placeholder
-
-
 ## Usage
 
-Use `raggy` command to run in interactive CLI mode.
+Type `raggy` command to run interactive CLI:
+
+<img src="assets/cli_demo.png">
 
 Or use it as a library:
 
 ```python
 from raggy import run_pipeline, source_label
 
-query = "What is TS-RAG?"
+query = "What GPU hardware was used to run the TS-RAG experiments?"
 
 response, retrieved_docs = run_pipeline(query)
 
@@ -111,16 +92,38 @@ for i, doc in enumerate(retrieved_docs, 1):
     print(doc.page_content)
 ```
 
+## Configuration
 
-## Default dataset
+All runtime settings are read from `config.yaml` (the file must be present in the
+working directory when you run the `raggy` CLI or import the library):
+
+| Setting | Description |
+| --- | --- |
+| `sources` | **list of source directories and/or files** |
+| `persist_directory` | location where the DB itself is stored |
+| `embedding_model` | Ollama embedding model (e.g. `nomic-embed-text`) |
+| `chunk_size` | chunk size in characters |
+| `chunk_overlap` | character overlap between adjacent chunks |
+| `n_batches` | number of batches used when embedding chunks into Chroma |
+| `llm_model` | Ollama chat model (e.g. `llama3.2`) |
+| `temperature` | LLM sampling temperature |
+| `search_type` | retriever search type (e.g. `mmr` or `similarity`) |
+| `retrieve_k` | number of chunks returned by the first-stage retrieval |
+| `mmr_fetch_k` | number of candidate chunks fetched before MMR reranking (used when `search_type: mmr`) |
+| `rerank_enabled` | whether to use additional reranking after retrieval stage (off by default) |
+| `rerank_model` | Hugging Face ID of the cross-encoder model (default `cross-encoder/ms-marco-MiniLM-L6-v2`) |
+| `rerank_k` | final number of chunks returned by the cross-encoder (must be `<= retrieve_k`) |
+| `system_prompt` | system prompt dictating how the LLM should answer; must contain a `{context}` placeholder |
+
+## Demo dataset
 
 This article (https://arxiv.org/abs/2608.06223v1) is used here for testing. It's an 8-page document -- each page
 is saved in different file formats (including PDF, plaintext, images, MS Word) and saved inside
 `sample_docs_pt1` and `sample_docs_pt2` directories. These directories are specified in `config.yaml` by default.
 
-## Default eval
+## Demo eval
 
-`eval` folder currently contains simple Q&A dataset to test pipeline performance end-to-end.
+`eval` folder currently contains simple Q&A dataset to test pipeline performance on demo dataset end-to-end.
 To run the test, make sure the Ollama service is running and the configured models are pulled, then run:
 
 ```bash
@@ -165,10 +168,6 @@ uv run ruff format .
 
 CI (`.github/workflows`) runs lint, format check, and tests on every push.
 
-## License
-
-MIT (see `LICENSE`).
-
 ## Notes
 
 - `PyPDFLoader` parses PDFs page-by-page (each Document carries a `page` key);
@@ -189,3 +188,7 @@ MIT (see `LICENSE`).
 - `config.yaml` validation
 - Conversation memory in chat mode
 - Hybrid retrieval, additional pipeline tuning
+
+## License
+
+MIT (see `LICENSE`).

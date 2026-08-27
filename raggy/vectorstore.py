@@ -297,15 +297,13 @@ def initialize_db(
         )
         _write_manifest(persist_directory, index_cfg)
         logger.info(
-            "Successfully saved DB to '%s' (%d chunks).",
+            "Successfully saved DB to '%s'.",
             persist_directory,
-            vectorstore._collection.count(),
         )
     else:
         logger.info(
-            "Loaded existing vector DB from '%s' (%d chunks found).",
+            "Loaded existing vector DB from '%s'.",
             persist_directory,
-            collection_count,
         )
 
     return vectorstore

@@ -18,12 +18,7 @@ search_type: "mmr"
 retrieve_k: 5
 mmr_fetch_k: 25
 
-# Cross-encoder re-ranking (optional; toggle on/off for A/B testing)
-# Pipeline is always: first-stage retrieval (see search_type above) → optional cross-encoder.
-# The first stage always returns retrieve_k chunks (mmr_fetch_k is the MMR candidate
-# pool, used only when search_type is "mmr");
-# when re-ranking is enabled the cross-encoder narrows them down to rerank_k
-# (must be no greater than retrieve_k).
+# optional cross-encoder re-ranking
 rerank_enabled: false
 rerank_model: "cross-encoder/ms-marco-MiniLM-L6-v2"
 rerank_k: 5
