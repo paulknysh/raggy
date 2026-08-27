@@ -57,6 +57,14 @@ Requires an **active virtual environment**:
 pip install -e .
 ```
 
+### Testing, linting, and formatting
+
+The following command runs ruff lint, formatting, and pytest:
+
+```bash
+make sure
+```
+
 ## Usage
 
 Type `raggy` command to run interactive CLI:
@@ -142,14 +150,6 @@ directory recording these parameters:
 The `manifest.yaml` is cheap to recompute, so for every new run it is computed and compared against existing one.
 Any changes to its content, including changes to `content_hash` will cause DB to be re-indexed.
 
-
-## Testing, linting, and formatting
-
-The following command runs ruff lint, formatting, and pytest:
-
-```bash
-make sure
-```
 
 ## Notes
 
