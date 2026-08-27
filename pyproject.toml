@@ -39,6 +39,9 @@ dependencies = [
     "python-docx>=1.2.0",
     "rapidocr-onnxruntime>=1.4.4",
     "pymupdf>=1.28.2",
+    "pytest",
+    "ruff>=0.16.1",
+    "reportlab>=5.0.0",
 ]
 
 [tool.pytest.ini_options]
@@ -51,11 +54,6 @@ filterwarnings = [
 where = ["."]
 include = ["raggy*"]
 
-[dependency-groups]
-dev = [
-    "reportlab>=5.0.0",
-]
-
 [project.scripts]
 raggy = "raggy.cli:main"
 
@@ -63,10 +61,3 @@ raggy = "raggy.cli:main"
 Homepage = "https://github.com/paulknysh/raggy"
 Repository = "https://github.com/paulknysh/raggy"
 Issues = "https://github.com/paulknysh/raggy/issues"
-
-[project.optional-dependencies]
-dev = [
-    "pytest",
-    "ruff>=0.16.1",
-    "reportlab",
-]

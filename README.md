@@ -43,31 +43,18 @@ Requires Python 3.10 or newer.
 
 ### Install with uv (recommended)
 
-`uv` creates and manages the virtual environment for you. For a normal
-install use `uv sync`; for development (adds `pytest`/`ruff`) use the `dev`
-extra — this is also what CI runs:
+`uv` creates and manages the virtual environment for you:
 
 ```bash
-uv sync --extra dev
+uv sync
 ```
 
-### Install with pip / uv pip
+### Install with pip
 
-These commands require an **active virtual environment** (`uv pip` will not
-create one). Inside your venv:
-
-```bash
-pip install .
-# or
-uv pip install .
-```
-
-For an editable/development install (adds the `dev` extra with `pytest`/`ruff`):
+Requires an **active virtual environment**:
 
 ```bash
-pip install -e ".[dev]"
-# or
-uv pip install -e ".[dev]"
+pip install -e .
 ```
 
 ## Usage
@@ -158,15 +145,11 @@ Any changes to its content, including changes to `content_hash` will cause DB to
 
 ## Testing, linting, and formatting
 
-After installing the dev extras (see above, e.g. `uv sync --extra dev`):
+The following command runs ruff lint, formatting, and pytest:
 
 ```bash
-uv run pytest -q
-uv run ruff check .
-uv run ruff format .
+make sure
 ```
-
-CI (`.github/workflows`) runs lint, format check, and tests on every push.
 
 ## Notes
 

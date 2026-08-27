@@ -2926,25 +2926,16 @@ dependencies = [
     { name = "onnxruntime", version = "1.28.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pymupdf" },
     { name = "pypdf" },
+    { name = "pytest" },
     { name = "python-docx" },
     { name = "python-pptx" },
     { name = "pyyaml" },
     { name = "rapidocr-onnxruntime" },
+    { name = "reportlab" },
     { name = "rich" },
+    { name = "ruff" },
     { name = "tokenizers" },
     { name = "tqdm" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "reportlab" },
-    { name = "ruff" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "reportlab" },
 ]
 
 [package.metadata]
@@ -2961,21 +2952,17 @@ requires-dist = [
     { name = "onnxruntime" },
     { name = "pymupdf", specifier = ">=1.28.2" },
     { name = "pypdf" },
-    { name = "pytest", marker = "extra == 'dev'" },
+    { name = "pytest" },
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "python-pptx", specifier = ">=1.0.2" },
     { name = "pyyaml" },
     { name = "rapidocr-onnxruntime", specifier = ">=1.4.4" },
-    { name = "reportlab", marker = "extra == 'dev'" },
+    { name = "reportlab", specifier = ">=5.0.0" },
     { name = "rich", specifier = ">=15.0.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.16.1" },
+    { name = "ruff", specifier = ">=0.16.1" },
     { name = "tokenizers" },
     { name = "tqdm" },
 ]
-provides-extras = ["dev"]
-
-[package.metadata.requires-dev]
-dev = [{ name = "reportlab", specifier = ">=5.0.0" }]
 
 [[package]]
 name = "rapidocr-onnxruntime"
