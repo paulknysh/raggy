@@ -32,6 +32,7 @@ dependencies = [
     "onnxruntime",
     "huggingface-hub",
     "tokenizers",
+    "numpy",
     "rich>=15.0.0",
     "docx2txt>=0.9",
     "python-pptx>=1.0.2",
@@ -41,7 +42,6 @@ dependencies = [
     "pymupdf>=1.28.2",
     "pytest",
     "ruff>=0.16.1",
-    "reportlab>=5.0.0",
 ]
 
 [tool.pytest.ini_options]

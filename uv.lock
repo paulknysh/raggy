@@ -2922,6 +2922,9 @@ dependencies = [
     { name = "langchain-core" },
     { name = "langchain-ollama" },
     { name = "langchain-text-splitters" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "onnxruntime", version = "1.24.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "onnxruntime", version = "1.28.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pymupdf" },
@@ -2931,7 +2934,6 @@ dependencies = [
     { name = "python-pptx" },
     { name = "pyyaml" },
     { name = "rapidocr-onnxruntime" },
-    { name = "reportlab" },
     { name = "rich" },
     { name = "ruff" },
     { name = "tokenizers" },
@@ -2949,6 +2951,7 @@ requires-dist = [
     { name = "langchain-core" },
     { name = "langchain-ollama" },
     { name = "langchain-text-splitters" },
+    { name = "numpy" },
     { name = "onnxruntime" },
     { name = "pymupdf", specifier = ">=1.28.2" },
     { name = "pypdf" },
@@ -2957,7 +2960,6 @@ requires-dist = [
     { name = "python-pptx", specifier = ">=1.0.2" },
     { name = "pyyaml" },
     { name = "rapidocr-onnxruntime", specifier = ">=1.4.4" },
-    { name = "reportlab", specifier = ">=5.0.0" },
     { name = "rich", specifier = ">=15.0.0" },
     { name = "ruff", specifier = ">=0.16.1" },
     { name = "tokenizers" },
@@ -2999,19 +3001,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/22/f5/df4e9027acead3ecc63e50fe1e36aca1523e1719559c499951bb4b53188f/referencing-0.37.0.tar.gz", hash = "sha256:44aefc3142c5b842538163acb373e24cce6632bd54bdb01b21ad5863489f50d8", size = 78036, upload-time = "2025-10-13T15:30:48.871Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2c/58/ca301544e1fa93ed4f80d724bf5b194f6e4b945841c5bfd555878eea9fcb/referencing-0.37.0-py3-none-any.whl", hash = "sha256:381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231", size = 26766, upload-time = "2025-10-13T15:30:47.625Z" },
-]
-
-[[package]]
-name = "reportlab"
-version = "5.0.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "charset-normalizer" },
-    { name = "pillow" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/41/d6/4b7b0cf56880eb96533e607967be6a939e344675601e033d113a0bfa1f4e/reportlab-5.0.0.tar.gz", hash = "sha256:e4494a0c6623ae213bb856fba523171b2b54a7bf629fda02d5e525a7b899a784", size = 3701928, upload-time = "2026-06-18T11:34:31.145Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a3/07/70085c17a369605f15e301d10ab902115019b1126c7253d964afc230c7d6/reportlab-5.0.0-py3-none-any.whl", hash = "sha256:9d5a3affa84919e1111ede580031266a570e93b1ce388219621347965ff1d93c", size = 1956710, upload-time = "2026-06-18T11:34:29.07Z" },
 ]
 
 [[package]]

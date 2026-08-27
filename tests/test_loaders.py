@@ -82,12 +82,13 @@ def test_load_documents_loads_text_file(tmp_path):
 
 
 def test_load_documents_loads_pdf_file(tmp_path):
-    from reportlab.pdfgen import canvas
+    import pymupdf
 
     pdf_path = tmp_path / "sample.pdf"
-    pdf = canvas.Canvas(str(pdf_path))
-    pdf.drawString(100, 750, "PDF content here")
-    pdf.save()
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "PDF content here")
+    doc.save(str(pdf_path))
 
     documents = load_documents(str(pdf_path))
 
@@ -97,14 +98,14 @@ def test_load_documents_loads_pdf_file(tmp_path):
 
 
 def test_load_documents_pdf_pages_are_one_indexed(tmp_path):
-    from reportlab.pdfgen import canvas
+    import pymupdf
 
     pdf_path = tmp_path / "pages.pdf"
-    pdf = canvas.Canvas(str(pdf_path))
+    doc = pymupdf.open()
     for _ in range(3):
-        pdf.drawString(100, 750, "Page content")
-        pdf.showPage()
-    pdf.save()
+        page = doc.new_page()
+        page.insert_text((72, 100), "Page content")
+    doc.save(str(pdf_path))
 
     documents = load_documents(str(pdf_path))
 
