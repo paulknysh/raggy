@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "raggy"
 version = "0.1.0"
-description = "A small RAG pipeline built with LangChain, Chroma, and Ollama."
+description = "A small local-first RAG pipeline built with LangChain, Chroma, and Ollama; generation can run locally or via a cloud API."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Paul Knysh" }]
 license = { file = "LICENSE" }
-keywords = ["rag", "langchain", "chroma", "ollama", "retrieval-augmented-generation"]
+keywords = ["rag", "langchain", "chroma", "ollama", "openai", "anthropic", "google", "retrieval-augmented-generation"]
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -40,6 +40,9 @@ dependencies = [
     "python-docx>=1.2.0",
     "rapidocr-onnxruntime>=1.4.4",
     "pymupdf>=1.28.2",
+    "langchain-openai",
+    "langchain-anthropic",
+    "langchain-google-genai",
     "pytest",
     "ruff>=0.16.1",
 ]

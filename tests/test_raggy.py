@@ -42,6 +42,7 @@ def test_load_config_reads_all_values(tmp_path):
         "chunk_overlap": 600,
         "n_batches": 2,
         "embedding_model": "test-embed",
+        "llm_provider": "ollama",
         "llm_model": "test-llm",
         "temperature": 0.4,
         "retrieve_k": 11,
@@ -52,6 +53,59 @@ def test_load_config_reads_all_values(tmp_path):
         "rerank_k": 4,
         "system_prompt": "use this",
     }
+
+
+def test_load_config_llm_provider_defaults_to_ollama(tmp_path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "sources:\n"
+        "  - ./docs\n"
+        "persist_directory: ./my_db\n"
+        "chunk_size: 500\n"
+        "chunk_overlap: 100\n"
+        "n_batches: 2\n"
+        "embedding_model: test-embed\n"
+        "llm_model: test-llm\n"
+        "temperature: 0.0\n"
+        "retrieve_k: 5\n"
+        "mmr_fetch_k: 25\n"
+        "search_type: mmr\n"
+        "rerank_enabled: false\n"
+        "rerank_model: rerank-x\n"
+        "system_prompt: use this\n",
+        encoding="utf-8",
+    )
+
+    cfg = raggy.load_config(str(config_file))
+
+    assert cfg["llm_provider"] == "ollama"
+
+
+def test_load_config_reads_llm_provider(tmp_path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "sources:\n"
+        "  - ./docs\n"
+        "persist_directory: ./my_db\n"
+        "chunk_size: 500\n"
+        "chunk_overlap: 100\n"
+        "n_batches: 2\n"
+        "embedding_model: test-embed\n"
+        "llm_provider: google\n"
+        "llm_model: test-llm\n"
+        "temperature: 0.0\n"
+        "retrieve_k: 5\n"
+        "mmr_fetch_k: 25\n"
+        "search_type: mmr\n"
+        "rerank_enabled: false\n"
+        "rerank_model: rerank-x\n"
+        "system_prompt: use this\n",
+        encoding="utf-8",
+    )
+
+    cfg = raggy.load_config(str(config_file))
+
+    assert cfg["llm_provider"] == "google"
 
 
 def test_load_config_rerank_k_defaults_to_retrieve_k(tmp_path):
@@ -191,6 +245,7 @@ def test_init_db_forwards_config_to_initialize_db(monkeypatch):
 def test_run_pipeline_returns_response_and_retrieved_docs(monkeypatch):
     fake_cfg = {
         "llm_model": "llm-x",
+        "llm_provider": "ollama",
         "system_prompt": "sys",
         "search_type": "mmr",
         "retrieve_k": 2,
@@ -293,6 +348,7 @@ def test_refresh_db_skips_rebuild_when_fresh(monkeypatch):
 def test_run_pipeline_stream_yields_chunks_and_captures_docs(monkeypatch):
     fake_cfg = {
         "llm_model": "llm-x",
+        "llm_provider": "ollama",
         "system_prompt": "sys",
         "search_type": "mmr",
         "retrieve_k": 2,
@@ -327,6 +383,7 @@ def test_run_pipeline_stream_yields_chunks_and_captures_docs(monkeypatch):
 def test_run_pipeline_propagates_unexpected_error(monkeypatch):
     fake_cfg = {
         "llm_model": "llm-x",
+        "llm_provider": "ollama",
         "system_prompt": "sys",
         "search_type": "mmr",
         "retrieve_k": 2,

@@ -1,7 +1,9 @@
 # raggy
 
-A lightweight Retrieval-Augmented Generation (RAG) package that runs fully
-locally on your own documents using LangChain, Chroma, and Ollama. It supports
+A lightweight Retrieval-Augmented Generation (RAG) package built with
+LangChain and Chroma. It is local-first: your documents and the vector DB live
+entirely on your machine, embeddings run locally via Ollama, and answer
+generation can run locally (Ollama) or via a cloud provider's API. It supports
 common formats (PDF, Word, PowerPoint, plain text, images) and uses OCR
 automatically when needed.
 
@@ -9,36 +11,33 @@ Supported file formats — all other files are ignored:
 
 `.pdf`, `.docx`, `.pptx`, `.txt`, `.md`, `.markdown`, `.html`, `.htm`, `.png`, `.jpg`, `.jpeg`, `.bmp`.
 
-Built primarily for self-education and experimentation.
 
+## Set up
 
-## Setting up Ollama
-
-Ollama runs local models with no API key required. Install it for your platform,
-then pull the models referenced in `config.yaml`.
-
-Install Ollama (macOS / Linux):
+Ollama is required for running local embedding model (which feeds the on-disk DB):
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
-```
-
-Starting the Ollama service:
-
-```bash
 ollama serve
+ollama pull nomic-embed-text   # default embedding model, always required
 ```
 
-Then pull the models configured in `config.yaml`:
+In case LLM will be used locally via Ollama:
 
 ```bash
-ollama pull nomic-embed-text   # embedding model (embeddings)
-ollama pull llama3.2           # chat LLM (generation)
+ollama pull llama3.2           # default local LLM
 ```
 
-`nomic-embed-text` is a lightweight embedding model used to index document chunks;
-`llama3.2` is the chat model that generates answers from the retrieved context.
-Once downloaded they are cached locally, so future runs use them immediately.
+In case API key will be used for accessing LLM remotely, standard environment variable needs to be set (which is one of):
+
+```bash
+export GEMINI_API_KEY=...       # llm_provider: google
+export OPENAI_API_KEY=...       # llm_provider: openai
+export ANTHROPIC_API_KEY=...    # llm_provider: anthropic
+```
+
+Then `config.yaml` needs to be updated with proper `llm_provider` ("openai", "anthropic", "google") and `llm_model` (e.g. "gemini-3.5-flash")
+
 
 ## Installing `raggy`
 
@@ -103,7 +102,8 @@ working directory when you run the `raggy` CLI or import the library):
 | `chunk_size` | chunk size in characters |
 | `chunk_overlap` | character overlap between adjacent chunks |
 | `n_batches` | number of batches used when embedding chunks into Chroma |
-| `llm_model` | Ollama chat model (e.g. `llama3.2`) |
+| `llm_provider` | where generation runs: `ollama` (local, default) or `openai`/`anthropic`/`google` (via API) |
+| `llm_model` | chat model for generation (e.g. `llama3.2` locally, or a remote model name like `gpt-4o`) |
 | `temperature` | LLM sampling temperature |
 | `search_type` | retriever search type (e.g. `mmr` or `similarity`) |
 | `retrieve_k` | number of chunks returned by the first-stage retrieval |
@@ -122,7 +122,7 @@ is saved in different file formats (including PDF, plaintext, images, MS Word) a
 ## Demo eval
 
 `eval` folder currently contains simple Q&A dataset to test pipeline performance on demo dataset end-to-end.
-To run the test, make sure the Ollama service is running and the configured models are pulled, then run:
+To run the test, start the Ollama service with the embedding model pulled (embeddings are always local), then run:
 
 ```bash
 uv run eval/run_eval.py
@@ -170,11 +170,11 @@ Any changes to its content, including changes to `content_hash` will cause DB to
 
 ## Planned TODOs
 
-- Option to use API keys instead of local LLM
-- Hybrid retrieval, additional pipeline tuning
-- `config.yaml` validation
-- Conversation memory in chat mode
-- More optimizations (improved runtime, incremental DB re-indexing etc)
+- [x] Support of popular LLMs via API keys
+- [ ] Hybrid retrieval, pipeline tuning
+- [ ] Input validation
+- [ ] Conversation memory in chat mode
+- [ ] Additional optimizations
 
 ## License
 

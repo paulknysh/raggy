@@ -60,6 +60,7 @@ def load_config(config_path: str = "config.yaml") -> dict[str, Any]:
         "chunk_overlap": int(cfg["chunk_overlap"]),
         "n_batches": int(cfg["n_batches"]),
         "embedding_model": str(cfg["embedding_model"]),
+        "llm_provider": str(cfg.get("llm_provider", "ollama")),
         "llm_model": str(cfg["llm_model"]),
         "temperature": float(cfg["temperature"]),
         "retrieve_k": retrieve_k,
@@ -127,8 +128,9 @@ def run_pipeline(query: str) -> tuple[Any, list[Any]]:
     """Run ``query`` through the RAG pipeline and return (answer, retrieved docs).
 
     This is a library function: errors (missing config, missing Ollama model,
-    embedding failures, ...) propagate to the caller instead of terminating
-    the process. CLI wrappers are responsible for catching and reporting them.
+    missing provider API key, embedding failures, ...) propagate to the caller
+    instead of terminating the process. CLI wrappers are responsible for
+    catching and reporting them.
     """
     cfg = load_config()
     vectorstore = _get_vectorstore()
@@ -138,6 +140,7 @@ def run_pipeline(query: str) -> tuple[Any, list[Any]]:
     rag_chain, _ = build_rag_chain(
         vectorstore=vectorstore,
         llm_model=cfg["llm_model"],
+        llm_provider=cfg["llm_provider"],
         system_prompt=cfg["system_prompt"],
         search_type=cfg["search_type"],
         k=cfg["retrieve_k"],
@@ -178,6 +181,7 @@ def run_pipeline_stream(query: str, doc_sink: list | None = None) -> Iterator[st
     rag_chain, _ = build_rag_chain(
         vectorstore=vectorstore,
         llm_model=cfg["llm_model"],
+        llm_provider=cfg["llm_provider"],
         system_prompt=cfg["system_prompt"],
         search_type=cfg["search_type"],
         k=cfg["retrieve_k"],

@@ -2,7 +2,7 @@
 
 Score each QA pair in ``eval/qa.json`` on retrieval quality (hit rate, MRR,
 recall@k) and generation quality (BLEU-1, ROUGE-L, embedding similarity, and an
-LLM-as-judge verdict from the local Ollama model).
+LLM-as-judge verdict from the configured provider). Embeddings are local (Ollama).
 
 Run with:  uv run eval/run_eval.py
 """
@@ -20,9 +20,10 @@ from typing import Any
 
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_ollama import ChatOllama, OllamaEmbeddings
+from langchain_ollama import OllamaEmbeddings
 
 from raggy import load_config, run_pipeline
+from raggy.llm_factory import get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +105,7 @@ def _abstains(answer: str) -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# LLM-as-judge (groundedness + answer relevance), fully local via Ollama
+# LLM-as-judge (groundedness + answer relevance), via the configured provider
 # --------------------------------------------------------------------------- #
 
 JUDGE_SYSTEM = (
@@ -139,7 +140,7 @@ def _parse_judge_scores(raw: Any) -> dict[str, float] | None:
 
 
 def judge_answer(
-    llm: ChatOllama,
+    llm,
     question: str,
     reference: str,
     answer: str,
@@ -232,8 +233,8 @@ def main() -> None:
     logger.info("Evaluating QA pairs...")
 
     embeddings = OllamaEmbeddings(model=_cfg["embedding_model"])
-    judge_llm = ChatOllama(
-        model=_cfg["llm_model"], temperature=_cfg["temperature"], format="json"
+    judge_llm = get_llm(
+        _cfg["llm_provider"], _cfg["llm_model"], temperature=_cfg["temperature"]
     )
 
     rows: list[dict[str, Any]] = []

@@ -7,8 +7,8 @@ from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrough
-from langchain_ollama import ChatOllama
 
+from .llm_factory import get_llm
 from .llm_filter import filter_docs_by_relevance
 from .reranker import DEFAULT_RERANKER_MODEL, get_cross_encoder
 
@@ -53,11 +53,6 @@ def get_retriever(
     return retriever
 
 
-def get_llm(model_name: str, temperature: float) -> ChatOllama:
-    """Initializes and returns the ChatOllama language model."""
-    return ChatOllama(model=model_name, temperature=temperature)
-
-
 def format_docs(retrieved_docs: list[Document]) -> str:
     """Helper function to format retrieved chunks into a single string."""
     return "\n\n".join(doc.page_content for doc in retrieved_docs)
@@ -76,6 +71,7 @@ def get_prompt_template(system_prompt: str) -> ChatPromptTemplate:
 def build_rag_chain(
     vectorstore: Chroma,
     llm_model: str,
+    llm_provider: str,
     system_prompt: str,
     search_type: str,
     k: int,
@@ -105,7 +101,7 @@ def build_rag_chain(
         rerank_model=rerank_model,
         rerank_k=rerank_k,
     )
-    llm = get_llm(llm_model, temperature=temperature)
+    llm = get_llm(llm_provider, llm_model, temperature=temperature)
     prompt = get_prompt_template(system_prompt)
 
     def format_and_capture(docs: list[Document]) -> str:

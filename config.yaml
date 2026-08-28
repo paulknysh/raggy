@@ -9,6 +9,7 @@ chunk_overlap: 100
 n_batches: 20
 
 # LLM Configuration
+llm_provider: "ollama" # other options: "openai" | "anthropic" | "google"
 llm_model: "llama3.2"
 temperature: 0.0
 
