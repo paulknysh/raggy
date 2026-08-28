@@ -9,6 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrough
 from langchain_ollama import ChatOllama
 
+from .llm_filter import filter_docs_by_relevance
 from .reranker import DEFAULT_RERANKER_MODEL, get_cross_encoder
 
 
@@ -89,9 +90,11 @@ def build_rag_chain(
     Builds the RAG Chain using LangChain Expression Language (LCEL).
     Returns a tuple containing (rag_chain, retriever).
 
-    The retrieved Documents are captured in a single pass and appended to
-    ``doc_sink`` (if provided), so callers can inspect exactly what the LLM
-    saw without running the retriever a second time.
+    After retrieval, the LLM grades each chunk as relevant/irrelevant in a
+    single pass and only the relevant ones reach the prompt. The surviving
+    Documents are captured in a single pass and appended to ``doc_sink``
+    (if provided), so callers can inspect exactly what the LLM saw without
+    running the retriever a second time.
     """
     retriever = get_retriever(
         vectorstore,
@@ -110,9 +113,16 @@ def build_rag_chain(
             doc_sink.append(docs)
         return format_docs(docs)
 
+    def retrieve_llm_filter_capture(query: str) -> str:
+        docs = retriever.invoke(query)
+        docs = filter_docs_by_relevance(query, docs, llm)
+        return format_and_capture(docs)
+
+    context_step: Runnable = RunnableLambda(retrieve_llm_filter_capture)
+
     rag_chain = (
         {
-            "context": retriever | RunnableLambda(format_and_capture),
+            "context": context_step,
             "question": RunnablePassthrough(),
         }
         | prompt
