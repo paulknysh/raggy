@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import shutil
+import sys
 from pathlib import Path
 
 import yaml
@@ -131,6 +132,7 @@ def ingest_document(
         batch_sizes,
         total=n_batches,
         desc="Indexing Batches",
+        disable=not sys.stderr.isatty(),
     ):
         batch = splits[:batch_size]
         splits = splits[batch_size:]

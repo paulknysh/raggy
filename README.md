@@ -71,7 +71,7 @@ make sure
 
 Type `raggy` command to run interactive CLI:
 
-<img src="assets/cli_demo.png" width="850">
+<img src="assets/cli_demo.png">
 
 Or use it as a library:
 

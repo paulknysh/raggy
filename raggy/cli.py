@@ -2,22 +2,48 @@
 
 import logging
 import readline  # noqa: F401  enables arrow-key editing/history in input()
+import textwrap
 
 from rich.box import SIMPLE_HEAD
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.prompt import Prompt
 from rich.table import Table
 
-from .raggy import refresh_db, run_pipeline_stream, source_label
+from .raggy import load_config, refresh_db, run_pipeline_stream, source_label
+from .vectorstore import build_index_config, db_needs_rebuild
 
 logger = logging.getLogger(__name__)
 
 ACCENT = "blue"
+STATUS_ACCENT = "grey"
+
+LOGO = textwrap.dedent(
+    r"""
+    █▀█ █▀█ █▀▀ █▀▀ █ █
+    █▀▄ █▀█ █ █ █ █ ▀█▀
+    ▀ ▀ ▀ ▀ ▀▀▀ ▀▀▀  ▀
+    """
+).strip("\n")
 
 console = Console()
+
+
+def _ask(prompt: str) -> str:
+    """Prompt for input, using a plain (uncolored) readline prompt.
+
+    rich's ``Prompt.ask``/``console.input`` and ANSI-colored prompts are
+    unreliable here: on macOS the ``readline`` module is backed by Apple's
+    libedit, which mangles any ANSI escapes in the prompt (cursor jumps while
+    typing) and wipes the label when backspacing. A plain-text prompt passed
+    to ``input()`` is measured correctly by both libedit and GNU readline, so
+    backspacing and arrow keys behave as expected.
+    """
+    from rich.text import Text
+
+    plain = Text.from_markup(prompt).plain
+    return input(plain)
 
 
 def _answer_panel(text: str) -> Panel:
@@ -57,34 +83,49 @@ def print_citations(retrieved_docs) -> None:
 def run_chat() -> None:
     console.print(
         Panel.fit(
-            f"[bold {ACCENT}]raggy[/bold {ACCENT}] - chat with your documents!\n\n"
-            "You can specify source folders/files and tune RAG parameters in "
-            "[bold]config.yaml[/bold].",
+            f"[{ACCENT}]{LOGO}[/{ACCENT}]\n\n"
+            "You can specify source folders/files and other parameters in "
+            "[bold]config.yaml[/bold].\n\n"
+            "Type [bold]exit[/bold], [bold]quit[/bold] or [bold]q[/bold] to leave.",
             border_style=ACCENT,
         )
     )
-    console.print(
-        f"[{ACCENT}]Ask a question, or type [bold]exit[/bold] / press Ctrl+C to quit.\n"
-    )
+    console.print()
 
     while True:
         try:
-            query = Prompt.ask(f"[bold {ACCENT}]Question[/bold {ACCENT}]")
+            query = _ask("Question: ")
         except (KeyboardInterrupt, EOFError):
-            console.print(f"\n[{ACCENT}]See you![/{ACCENT}]")
+            console.print()
+            console.print(f"[{ACCENT}]See you![/{ACCENT}]")
             return
 
         query = query.strip()
         if query.lower() in {"exit", "quit", "q"}:
+            console.print()
             console.print(f"[{ACCENT}]See you![/{ACCENT}]")
             return
         if not query:
             continue
 
         try:
-            rebuilt = refresh_db()
+            cfg = load_config()
+            index_cfg = build_index_config(
+                sources=cfg["sources"],
+                chunk_size=cfg["chunk_size"],
+                chunk_overlap=cfg["chunk_overlap"],
+                embedding_model=cfg["embedding_model"],
+            )
+            needs_rebuild = db_needs_rebuild(cfg["persist_directory"], index_cfg)
+            if needs_rebuild:
+                with console.status(
+                    f"[{STATUS_ACCENT}]DB needs (re-)build...[/{STATUS_ACCENT}]"
+                ):
+                    rebuilt = refresh_db()
+            else:
+                rebuilt = refresh_db()
             doc_sink: list = []
-            with console.status(f"[{ACCENT}]Retrieving...[/{ACCENT}]"):
+            with console.status(f"[{STATUS_ACCENT}]Retrieving...[/{STATUS_ACCENT}]"):
                 stream = run_pipeline_stream(query, doc_sink=doc_sink)
                 first_chunk = next(stream)
         except FileNotFoundError as e:
@@ -96,9 +137,7 @@ def run_chat() -> None:
             return
 
         if rebuilt:
-            console.print(
-                f"[{ACCENT}]Source documents changed - DB re-indexed.[/{ACCENT}]"
-            )
+            console.print(f"[{ACCENT}]DB re-indexed.[/{ACCENT}]")
 
         response_parts = [first_chunk]
         try:
@@ -124,5 +163,5 @@ def run_chat() -> None:
 
 def main() -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
-    logging.getLogger("raggy").setLevel(logging.INFO)
+    logging.getLogger("raggy").setLevel(logging.WARNING)
     run_chat()
