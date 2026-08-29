@@ -168,13 +168,14 @@ Any changes to its content, including changes to `content_hash` will cause DB to
 - The `langchain-community` loader deprecation warning is suppressed in the
   pytest config.
 
-## Planned TODOs
+## TODOs
 
-- [x] Support of popular LLMs via API keys
+- [x] Support of popular LLM providers via API keys
 - [x] Conversation memory in chat mode
-- [ ] Hybrid retrieval, pipeline tuning
-- [ ] Input validation
-- [ ] Additional optimizations
+- [x] Pydantic validation of config file
+- [ ] Hybrid retrieval, tuning config defaults
+- [ ] UX/UI tuning of CLI (improved commands/statuses etc)
+- [ ] Performance optimizations
 
 ## License
 

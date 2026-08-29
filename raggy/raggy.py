@@ -6,8 +6,8 @@ from typing import Any
 import yaml
 from langchain_chroma import Chroma
 
+from .config import RaggySettings
 from .pipeline import build_rag_chain
-from .reranker import DEFAULT_RERANKER_MODEL
 from .vectorstore import (
     build_index_config,
     close_vectorstore,
@@ -32,7 +32,13 @@ def source_label(doc) -> str:
 
 
 def load_config(config_path: str = "config.yaml") -> dict[str, Any]:
-    """Loads all parameters from config.yaml (the single source of truth)."""
+    """Loads and validates all parameters from config.yaml.
+
+    Reads ``config.yaml`` (the single source of truth) and validates it
+    against :class:`raggy.config.RaggySettings`, which enforces types, ranges,
+    allowed enum values, and cross-field invariants (e.g. ``retrieve_k`` vs
+    ``rerank_k``). Returns a plain dict for use by the rest of the library.
+    """
     path = Path(config_path)
     if not path.exists():
         raise FileNotFoundError(f"Runtime config file not found: {config_path}")
@@ -40,37 +46,13 @@ def load_config(config_path: str = "config.yaml") -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
 
-    sources = cfg["sources"]
-    if isinstance(sources, str):
-        sources = [sources]
-    if not sources:
-        raise ValueError("'sources' must contain at least one file or directory")
+    settings = RaggySettings(**cfg)
 
-    retrieve_k = int(cfg["retrieve_k"])
-    rerank_k = int(cfg.get("rerank_k", retrieve_k))
-    if rerank_k > retrieve_k:
-        raise ValueError(
-            f"rerank_k ({rerank_k}) must not be greater than retrieve_k ({retrieve_k})"
-        )
-
-    return {
-        "sources": [str(source) for source in sources],
-        "persist_directory": str(cfg["persist_directory"]),
-        "chunk_size": int(cfg["chunk_size"]),
-        "chunk_overlap": int(cfg["chunk_overlap"]),
-        "batch_size": int(cfg["batch_size"]),
-        "embedding_model": str(cfg["embedding_model"]),
-        "llm_provider": str(cfg.get("llm_provider", "ollama")),
-        "llm_model": str(cfg["llm_model"]),
-        "temperature": float(cfg["temperature"]),
-        "retrieve_k": retrieve_k,
-        "mmr_fetch_k": int(cfg["mmr_fetch_k"]),
-        "search_type": str(cfg["search_type"]),
-        "rerank_enabled": bool(cfg.get("rerank_enabled", False)),
-        "rerank_model": str(cfg.get("rerank_model", DEFAULT_RERANKER_MODEL)),
-        "rerank_k": rerank_k,
-        "system_prompt": str(cfg["system_prompt"]),
-    }
+    result = settings.model_dump()
+    # Preserve the historical public behavior: rerank_k defaults to retrieve_k.
+    if result["rerank_k"] is None:
+        result["rerank_k"] = result["retrieve_k"]
+    return result
 
 
 def _init_db() -> Chroma:
