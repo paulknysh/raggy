@@ -58,7 +58,7 @@ def load_config(config_path: str = "config.yaml") -> dict[str, Any]:
         "persist_directory": str(cfg["persist_directory"]),
         "chunk_size": int(cfg["chunk_size"]),
         "chunk_overlap": int(cfg["chunk_overlap"]),
-        "n_batches": int(cfg["n_batches"]),
+        "batch_size": int(cfg["batch_size"]),
         "embedding_model": str(cfg["embedding_model"]),
         "llm_provider": str(cfg.get("llm_provider", "ollama")),
         "llm_model": str(cfg["llm_model"]),
@@ -82,7 +82,7 @@ def _init_db() -> Chroma:
         sources=cfg["sources"],
         chunk_size=cfg["chunk_size"],
         chunk_overlap=cfg["chunk_overlap"],
-        n_batches=cfg["n_batches"],
+        batch_size=cfg["batch_size"],
     )
 
     return vectorstore

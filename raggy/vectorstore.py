@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import math
 import shutil
 import sys
 from pathlib import Path
@@ -89,13 +90,17 @@ def ingest_document(
     vectorstore: Chroma,  # Assuming Chroma is imported in your actual file
     chunk_size: int,
     chunk_overlap: int,
-    n_batches: int,
+    batch_size: int,
 ) -> None:
     """Loads, splits, and embeds documents into the vector store in batches.
 
     Each entry in ``sources`` may point to a single supported file (e.g.
     .txt/.md/.pdf/.docx/.pptx/.html/.png) or to a directory containing multiple
     supported files.
+
+    Chunks are grouped into batches of up to ``batch_size`` chunks. The number
+    of batches is derived dynamically from the total chunk count, so the setting
+    stays sensible regardless of dataset size.
     """
     docs = load_documents_from_sources(sources)
 
@@ -120,22 +125,28 @@ def ingest_document(
         logger.warning("No content found to split and index.")
         return
 
-    # Distribute splits into exactly ``n_batches`` batches, sizing them as
-    # evenly as possible so the remaining batches differ by at most one split.
-    base_size = total_splits // n_batches
-    remainder = total_splits % n_batches
-    batch_sizes = [base_size + (1 if i < remainder else 0) for i in range(n_batches)]
+    # Group splits into batches of at most ``batch_size`` chunks. The number of
+    # batches is computed from the total chunk count so it adapts to the dataset
+    # size: small datasets embed in a handful of batches, large ones in many.
+    n_batches = math.ceil(total_splits / batch_size)
+    batch_sizes = [
+        min(batch_size, total_splits - i * batch_size) for i in range(n_batches)
+    ]
 
-    logger.info("Embedding chunks into Chroma (%d batches)...", n_batches)
+    logger.info(
+        "Embedding chunks into Chroma (%d batches of <= %d)...",
+        n_batches,
+        batch_size,
+    )
 
-    for batch_size in tqdm(
+    for size in tqdm(
         batch_sizes,
         total=n_batches,
         desc="Indexing Batches",
         disable=not sys.stderr.isatty(),
     ):
-        batch = splits[:batch_size]
-        splits = splits[batch_size:]
+        batch = splits[:size]
+        splits = splits[size:]
         vectorstore.add_documents(batch)
 
 
@@ -262,7 +273,7 @@ def initialize_db(
     sources: list[str],
     chunk_size: int,
     chunk_overlap: int,
-    n_batches: int,
+    batch_size: int,
 ) -> Chroma:
     """
     Initializes the Chroma database.
@@ -295,7 +306,7 @@ def initialize_db(
             vectorstore=vectorstore,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
-            n_batches=n_batches,
+            batch_size=batch_size,
         )
         _write_manifest(persist_directory, index_cfg)
         logger.info(

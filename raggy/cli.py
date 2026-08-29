@@ -119,7 +119,7 @@ def run_chat() -> None:
             needs_rebuild = db_needs_rebuild(cfg["persist_directory"], index_cfg)
             if needs_rebuild:
                 with console.status(
-                    f"[{STATUS_ACCENT}]DB needs (re-)build...[/{STATUS_ACCENT}]"
+                    f"[{STATUS_ACCENT}]DB needs (re-)indexing...[/{STATUS_ACCENT}]"
                 ):
                     rebuilt = refresh_db()
             else:

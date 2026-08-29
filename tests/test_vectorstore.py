@@ -78,7 +78,7 @@ def test_initialize_db_ingests_when_collection_empty(tmp_path, monkeypatch):
         sources=[str(source_file)],
         chunk_size=500,
         chunk_overlap=50,
-        n_batches=20,
+        batch_size=100,
     )
 
     assert isinstance(result, FakeVectorstore)
@@ -123,7 +123,7 @@ def test_initialize_db_skips_ingest_when_data_exists(monkeypatch, tmp_path):
         sources=[str(source_file)],
         chunk_size=500,
         chunk_overlap=50,
-        n_batches=20,
+        batch_size=100,
     )
 
     assert calls["ingest"] == 0
@@ -171,7 +171,7 @@ def test_initialize_db_rebuilds_when_manifest_differs(tmp_path, monkeypatch):
         sources=[str(source_file)],
         chunk_size=500,
         chunk_overlap=50,
-        n_batches=20,
+        batch_size=100,
     )
 
     assert calls["ingest"] == 1

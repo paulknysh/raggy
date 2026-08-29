@@ -101,7 +101,7 @@ working directory when you run the `raggy` CLI or import the library):
 | `embedding_model` | Ollama embedding model (e.g. `nomic-embed-text`) |
 | `chunk_size` | chunk size in characters |
 | `chunk_overlap` | character overlap between adjacent chunks |
-| `n_batches` | number of batches used when embedding chunks into Chroma |
+| `batch_size` | max number of chunks embedded per batch into Chroma (default `100`); the number of batches is derived dynamically from the chunk count |
 | `llm_provider` | where generation runs: `ollama` (local, default) or `openai`/`anthropic`/`google` (via API) |
 | `llm_model` | chat model for generation (e.g. `llama3.2` locally, or a remote model name like `gpt-4o`) |
 | `temperature` | LLM sampling temperature |

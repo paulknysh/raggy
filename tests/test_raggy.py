@@ -19,7 +19,7 @@ def test_load_config_reads_all_values(tmp_path):
         "persist_directory: ./my_db\n"
         "chunk_size: 900\n"
         "chunk_overlap: 600\n"
-        "n_batches: 2\n"
+        "batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_model: test-llm\n"
         "temperature: 0.4\n"
@@ -40,7 +40,7 @@ def test_load_config_reads_all_values(tmp_path):
         "persist_directory": "./my_db",
         "chunk_size": 900,
         "chunk_overlap": 600,
-        "n_batches": 2,
+        "batch_size": 100,
         "embedding_model": "test-embed",
         "llm_provider": "ollama",
         "llm_model": "test-llm",
@@ -63,7 +63,7 @@ def test_load_config_llm_provider_defaults_to_ollama(tmp_path):
         "persist_directory: ./my_db\n"
         "chunk_size: 500\n"
         "chunk_overlap: 100\n"
-        "n_batches: 2\n"
+        "batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_model: test-llm\n"
         "temperature: 0.0\n"
@@ -89,7 +89,7 @@ def test_load_config_reads_llm_provider(tmp_path):
         "persist_directory: ./my_db\n"
         "chunk_size: 500\n"
         "chunk_overlap: 100\n"
-        "n_batches: 2\n"
+        "batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_provider: google\n"
         "llm_model: test-llm\n"
@@ -116,7 +116,7 @@ def test_load_config_rerank_k_defaults_to_retrieve_k(tmp_path):
         "persist_directory: ./my_db\n"
         "chunk_size: 500\n"
         "chunk_overlap: 100\n"
-        "n_batches: 2\n"
+        "batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_model: test-llm\n"
         "temperature: 0.0\n"
@@ -142,7 +142,7 @@ def test_load_config_rejects_rerank_k_greater_than_k(tmp_path):
         "persist_directory: ./my_db\n"
         "chunk_size: 500\n"
         "chunk_overlap: 100\n"
-        "n_batches: 2\n"
+        "batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_model: test-llm\n"
         "temperature: 0.0\n"
@@ -167,7 +167,7 @@ def test_load_config_accepts_single_string_source(tmp_path):
         "persist_directory: ./my_db\n"
         "chunk_size: 500\n"
         "chunk_overlap: 100\n"
-        "n_batches: 2\n"
+        "batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_model: test-llm\n"
         "temperature: 0.0\n"
@@ -192,7 +192,7 @@ def test_load_config_rejects_empty_sources(tmp_path):
         "persist_directory: ./my_db\n"
         "chunk_size: 500\n"
         "chunk_overlap: 100\n"
-        "n_batches: 2\n"
+        "batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_model: test-llm\n"
         "temperature: 0.0\n"
@@ -215,7 +215,7 @@ def test_init_db_forwards_config_to_initialize_db(monkeypatch):
         "persist_directory": "./persist",
         "chunk_size": 100,
         "chunk_overlap": 10,
-        "n_batches": 3,
+        "batch_size": 100,
         "embedding_model": "embed-x",
     }
     captured = {}
@@ -238,7 +238,7 @@ def test_init_db_forwards_config_to_initialize_db(monkeypatch):
         "sources": ["./docs"],
         "chunk_size": 100,
         "chunk_overlap": 10,
-        "n_batches": 3,
+        "batch_size": 100,
     }
 
 

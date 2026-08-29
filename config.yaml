@@ -6,7 +6,7 @@ persist_directory: "./chroma_db"
 embedding_model: "nomic-embed-text"
 chunk_size: 500
 chunk_overlap: 100
-n_batches: 20
+batch_size: 100
 
 # LLM Configuration
 llm_provider: "ollama" # other options: "openai" | "anthropic" | "google"
