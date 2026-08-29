@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 ACCENT = "blue"
 STATUS_ACCENT = "grey"
 
+MEMORY_TURNS = 8
+
 LOGO = textwrap.dedent(
     r"""
     █▀█ █▀█ █▀▀ █▀▀ █ █
@@ -86,11 +88,14 @@ def run_chat() -> None:
             f"[{ACCENT}]{LOGO}[/{ACCENT}]\n\n"
             "You can specify source folders/files and other parameters in "
             "[bold]config.yaml[/bold].\n\n"
-            "Type [bold]exit[/bold], [bold]quit[/bold] or [bold]q[/bold] to leave.",
+            "Type [bold]exit[/bold], [bold]quit[/bold] or [bold]q[/bold] to leave.\n"
+            "Type [bold]/clear[/bold] to reset the conversation memory.",
             border_style=ACCENT,
         )
     )
     console.print()
+
+    chat_history: list[tuple[str, str]] = []
 
     while True:
         try:
@@ -105,6 +110,10 @@ def run_chat() -> None:
             console.print()
             console.print(f"[{ACCENT}]See you![/{ACCENT}]")
             return
+        if query == "/clear":
+            chat_history.clear()
+            console.print(f"[{ACCENT}]Conversation memory cleared.[/{ACCENT}]")
+            continue
         if not query:
             continue
 
@@ -126,7 +135,9 @@ def run_chat() -> None:
                 rebuilt = refresh_db()
             doc_sink: list = []
             with console.status(f"[{STATUS_ACCENT}]Retrieving...[/{STATUS_ACCENT}]"):
-                stream = run_pipeline_stream(query, doc_sink=doc_sink)
+                stream = run_pipeline_stream(
+                    query, doc_sink=doc_sink, chat_history=chat_history
+                )
                 first_chunk = next(stream)
         except FileNotFoundError as e:
             console.print(f"[red]Error:[/red] {e}")
@@ -140,12 +151,14 @@ def run_chat() -> None:
             console.print(f"[{ACCENT}]DB re-indexed.[/{ACCENT}]")
 
         response_parts = [first_chunk]
+        interrupted = False
         try:
             with Live(_answer_panel(response_parts[0]), refresh_per_second=12) as live:
                 for chunk in stream:
                     response_parts.append(chunk)
                     live.update(_answer_panel("".join(response_parts)))
         except KeyboardInterrupt:
+            interrupted = True
             console.print(
                 f"\n[{ACCENT}]Answer interrupted; showing what was generated.[/{ACCENT}]"
             )
@@ -159,6 +172,11 @@ def run_chat() -> None:
         console.print()
         print_citations(retrieved_docs)
         console.print()
+
+        if not interrupted:
+            chat_history.append(("human", query))
+            chat_history.append(("ai", "".join(response_parts)))
+            del chat_history[: -MEMORY_TURNS * 2]
 
 
 def main() -> None:

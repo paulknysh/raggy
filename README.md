@@ -171,9 +171,9 @@ Any changes to its content, including changes to `content_hash` will cause DB to
 ## Planned TODOs
 
 - [x] Support of popular LLMs via API keys
+- [x] Conversation memory in chat mode
 - [ ] Hybrid retrieval, pipeline tuning
 - [ ] Input validation
-- [ ] Conversation memory in chat mode
 - [ ] Additional optimizations
 
 ## License

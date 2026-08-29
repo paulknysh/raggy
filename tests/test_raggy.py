@@ -256,11 +256,15 @@ def test_run_pipeline_returns_response_and_retrieved_docs(monkeypatch):
         "rerank_k": 2,
     }
 
+    captured = {}
+
     class FakeChain:
-        def invoke(self, query):
-            return f"answer:{query}"
+        def invoke(self, inputs):
+            captured["input"] = inputs
+            return f"answer:{inputs['question']}"
 
     def fake_build_rag_chain(**kwargs):
+        captured["chat_history"] = kwargs["chat_history"]
         sink = kwargs["doc_sink"]
         sink.append(
             [
@@ -278,6 +282,43 @@ def test_run_pipeline_returns_response_and_retrieved_docs(monkeypatch):
 
     assert response == "answer:hello"
     assert [doc.page_content for doc in docs] == ["doc1", "doc2"]
+    assert captured["chat_history"] is None
+    assert captured["input"] == {"question": "hello", "chat_history": []}
+
+
+def test_run_pipeline_forwards_chat_history(monkeypatch):
+    fake_cfg = {
+        "llm_model": "llm-x",
+        "llm_provider": "ollama",
+        "system_prompt": "sys",
+        "search_type": "mmr",
+        "retrieve_k": 2,
+        "mmr_fetch_k": 10,
+        "temperature": 0.0,
+        "rerank_enabled": False,
+        "rerank_model": "rerank-x",
+        "rerank_k": 2,
+    }
+    captured = {}
+    history = [("human", "hello"), ("ai", "hi")]
+
+    class FakeChain:
+        def invoke(self, inputs):
+            captured["input"] = inputs
+            return "answer"
+
+    def fake_build_rag_chain(**kwargs):
+        captured["chat_history"] = kwargs["chat_history"]
+        return FakeChain(), SimpleNamespace(invoke=lambda q: [])
+
+    monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
+    monkeypatch.setattr(raggy, "_get_vectorstore", lambda: object())
+    monkeypatch.setattr(raggy, "build_rag_chain", fake_build_rag_chain)
+
+    raggy.run_pipeline("follow-up", chat_history=history)
+
+    assert captured["chat_history"] is history
+    assert captured["input"] == {"question": "follow-up", "chat_history": history}
 
 
 def test_refresh_db_rebuilds_when_stale(monkeypatch):
@@ -360,7 +401,7 @@ def test_run_pipeline_stream_yields_chunks_and_captures_docs(monkeypatch):
     }
 
     class FakeChain:
-        def stream(self, query):
+        def stream(self, inputs):
             yield "hel"
             yield "lo"
 
@@ -378,6 +419,41 @@ def test_run_pipeline_stream_yields_chunks_and_captures_docs(monkeypatch):
 
     assert chunks == ["hel", "lo"]
     assert [doc.page_content for doc in doc_sink[-1]] == ["doc1"]
+
+
+def test_run_pipeline_stream_forwards_chat_history(monkeypatch):
+    fake_cfg = {
+        "llm_model": "llm-x",
+        "llm_provider": "ollama",
+        "system_prompt": "sys",
+        "search_type": "mmr",
+        "retrieve_k": 2,
+        "mmr_fetch_k": 10,
+        "temperature": 0.0,
+        "rerank_enabled": False,
+        "rerank_model": "rerank-x",
+        "rerank_k": 2,
+    }
+    captured = {}
+    history = [("human", "hello"), ("ai", "hi")]
+
+    class FakeChain:
+        def stream(self, inputs):
+            captured["input"] = inputs
+            yield "ans"
+
+    def fake_build_rag_chain(**kwargs):
+        captured["chat_history"] = kwargs["chat_history"]
+        return FakeChain(), SimpleNamespace(invoke=lambda q: [])
+
+    monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
+    monkeypatch.setattr(raggy, "_get_vectorstore", lambda: object())
+    monkeypatch.setattr(raggy, "build_rag_chain", fake_build_rag_chain)
+
+    list(raggy.run_pipeline_stream("follow-up", chat_history=history))
+
+    assert captured["chat_history"] is history
+    assert captured["input"] == {"question": "follow-up", "chat_history": history}
 
 
 def test_run_pipeline_propagates_unexpected_error(monkeypatch):

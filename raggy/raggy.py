@@ -124,8 +124,13 @@ def refresh_db() -> bool:
     return True
 
 
-def run_pipeline(query: str) -> tuple[Any, list[Any]]:
+def run_pipeline(query: str, chat_history: list | None = None) -> tuple[Any, list[Any]]:
     """Run ``query`` through the RAG pipeline and return (answer, retrieved docs).
+
+    ``chat_history`` optionally carries prior turns as ``("human"|"ai", content)``
+    tuples so the answer can build on the conversation; the chain is then
+    history-aware (the question is condensed for retrieval, and the history is
+    part of the prompt).
 
     This is a library function: errors (missing config, missing Ollama model,
     missing provider API key, embedding failures, ...) propagate to the caller
@@ -150,12 +155,13 @@ def run_pipeline(query: str) -> tuple[Any, list[Any]]:
         rerank_model=cfg["rerank_model"],
         rerank_k=cfg["rerank_k"],
         doc_sink=doc_sink,
+        chat_history=chat_history,
     )
 
     # Run query through RAG pipeline. The retrieved sources are captured
     # inside the chain in a single pass (doc_sink), so they match exactly
     # the context the LLM used to answer.
-    response = rag_chain.invoke(query)
+    response = rag_chain.invoke({"question": query, "chat_history": chat_history or []})
 
     # Output the source retrieved documents for verification. Full
     # Document objects are returned so callers can inspect the metadata
@@ -165,14 +171,19 @@ def run_pipeline(query: str) -> tuple[Any, list[Any]]:
     return response, retrieved_docs
 
 
-def run_pipeline_stream(query: str, doc_sink: list | None = None) -> Iterator[str]:
+def run_pipeline_stream(
+    query: str,
+    doc_sink: list | None = None,
+    chat_history: list | None = None,
+) -> Iterator[str]:
     """Run ``query`` through the RAG pipeline, yielding answer text chunks.
 
     Mirrors ``run_pipeline`` but streams the LLM output token-by-token so
     callers (like the CLI) can render it incrementally. The exact context the
     LLM saw is appended to ``doc_sink`` in a single pass (see
     ``build_rag_chain``); pass a list in and read ``doc_sink[-1]`` after
-    consuming the stream. Errors propagate to the caller.
+    consuming the stream. ``chat_history`` has the same meaning as in
+    ``run_pipeline``. Errors propagate to the caller.
     """
     cfg = load_config()
     vectorstore = _get_vectorstore()
@@ -191,6 +202,7 @@ def run_pipeline_stream(query: str, doc_sink: list | None = None) -> Iterator[st
         rerank_model=cfg["rerank_model"],
         rerank_k=cfg["rerank_k"],
         doc_sink=collected,
+        chat_history=chat_history,
     )
 
-    yield from rag_chain.stream(query)
+    yield from rag_chain.stream({"question": query, "chat_history": chat_history or []})

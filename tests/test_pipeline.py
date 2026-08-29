@@ -3,6 +3,51 @@ from types import SimpleNamespace
 from raggy import pipeline
 
 
+def _message_contents(messages):
+    """Flatten (role, content) tuples / BaseMessage objects into their content."""
+    contents = []
+    for m in messages:
+        if isinstance(m, list):
+            contents.extend(_message_contents(m))
+        elif isinstance(m, tuple):
+            contents.append(m[1])
+        elif isinstance(m, str):
+            contents.append(m)
+        else:
+            contents.append(m.content)
+    return contents
+
+
+class FakeLLM:
+    """Chain-compatible fake chat model: callable (for ``| llm``) and ``.invoke``."""
+
+    def __init__(self, capture, output="final answer"):
+        self.capture = capture
+        self.output = output
+
+    def __call__(self, prompt_input):
+        self.capture["prompt_messages"] = self._normalize(prompt_input)
+        return self.output
+
+    def invoke(self, messages):
+        self.capture["prompt_messages"] = self._normalize(messages)
+        return self.output
+
+    @staticmethod
+    def _normalize(prompt_input):
+        if hasattr(prompt_input, "to_messages"):
+            return prompt_input.to_messages()
+        if isinstance(prompt_input, list):
+            messages = []
+            for m in prompt_input:
+                if not isinstance(m, (str, tuple)):
+                    messages.extend(FakeLLM._normalize(m))
+                else:
+                    messages.append(m)
+            return messages
+        return prompt_input
+
+
 def test_get_retriever_uses_vectorstore_configuration():
     captured = {}
 
@@ -125,3 +170,135 @@ def test_get_prompt_template_calls_from_messages(monkeypatch):
 
     assert result == "prompt-template"
     assert captured["messages"] == [("system", "use context"), ("human", "{question}")]
+
+
+def test_get_prompt_template_adds_history_placeholder(monkeypatch):
+    captured = {}
+
+    class FakePromptTemplate:
+        @staticmethod
+        def from_messages(messages):
+            captured["messages"] = messages
+            return "prompt-template"
+
+    monkeypatch.setattr(pipeline, "ChatPromptTemplate", FakePromptTemplate)
+
+    pipeline.get_prompt_template("use context", with_history=True)
+
+    assert captured["messages"][0] == ("system", "use context")
+    assert captured["messages"][1].variable_name == "chat_history"
+    assert captured["messages"][2] == ("human", "{question}")
+
+
+def test_condense_question_passthrough_without_history():
+    assert pipeline.condense_question([], "plain question", "llm-not-called") == (
+        "plain question"
+    )
+
+
+def test_condense_question_rewrites_with_history(monkeypatch):
+    captured = {}
+
+    def fake_invoke(messages):
+        captured["messages"] = messages
+        return SimpleNamespace(content="standalone question")
+
+    class FakeParser:
+        def invoke(self, message):
+            return message.content
+
+    monkeypatch.setattr(pipeline, "StrOutputParser", lambda: FakeParser())
+
+    history = [("human", "What is the pricing?"), ("ai", "It starts at $10.")]
+    fake_llm = SimpleNamespace(invoke=fake_invoke)
+    result = pipeline.condense_question(
+        history, "what about the annual plan?", fake_llm
+    )
+
+    assert result == "standalone question"
+    rendered = captured["messages"][1].content
+    assert "User: What is the pricing?" in rendered
+    assert "Assistant: It starts at $10." in rendered
+
+
+def test_build_rag_chain_threads_history(monkeypatch):
+    captured = {}
+    fake_llm = FakeLLM(captured)
+    monkeypatch.setattr(pipeline, "get_llm", lambda *a, **k: fake_llm)
+    monkeypatch.setattr(
+        pipeline,
+        "get_retriever",
+        lambda *a, **k: SimpleNamespace(
+            invoke=lambda q: [SimpleNamespace(page_content="doc")]
+        ),
+    )
+    monkeypatch.setattr(pipeline, "filter_docs_by_relevance", lambda q, docs, llm: docs)
+
+    def fake_condense(history, question, llm):
+        captured["history"] = history
+        captured["question"] = question
+        return "standalone"
+
+    monkeypatch.setattr(pipeline, "condense_question", fake_condense)
+
+    history = [("human", "prev question"), ("ai", "prev answer")]
+    chain, _ = pipeline.build_rag_chain(
+        vectorstore=object(),
+        llm_model="m",
+        llm_provider="ollama",
+        system_prompt="sys",
+        search_type="similarity",
+        k=5,
+        fetch_k=25,
+        temperature=0.0,
+        chat_history=history,
+    )
+
+    out = chain.invoke({"question": "follow-up", "chat_history": history})
+
+    assert out == "final answer"
+    assert captured["history"] == history
+    assert captured["question"] == "follow-up"
+    assert _message_contents(captured["prompt_messages"]) == [
+        "sys",
+        "prev question",
+        "prev answer",
+        "follow-up",
+    ]
+
+
+def test_build_rag_chain_without_history_skips_condense(monkeypatch):
+    captured = {}
+    fake_llm = FakeLLM(captured)
+    monkeypatch.setattr(pipeline, "get_llm", lambda *a, **k: fake_llm)
+    monkeypatch.setattr(
+        pipeline,
+        "get_retriever",
+        lambda *a, **k: SimpleNamespace(
+            invoke=lambda q: [SimpleNamespace(page_content="doc")]
+        ),
+    )
+    monkeypatch.setattr(pipeline, "filter_docs_by_relevance", lambda q, docs, llm: docs)
+
+    def fake_condense(*args):
+        captured["condense_called"] = True
+        return "condensed"
+
+    monkeypatch.setattr(pipeline, "condense_question", fake_condense)
+
+    chain, _ = pipeline.build_rag_chain(
+        vectorstore=object(),
+        llm_model="m",
+        llm_provider="ollama",
+        system_prompt="sys",
+        search_type="similarity",
+        k=5,
+        fetch_k=25,
+        temperature=0.0,
+    )
+
+    out = chain.invoke({"question": "plain", "chat_history": []})
+
+    assert out == "final answer"
+    assert "condense_called" not in captured
+    assert _message_contents(captured["prompt_messages"]) == ["sys", "plain"]
