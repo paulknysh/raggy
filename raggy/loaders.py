@@ -28,6 +28,8 @@ SUPPORTED_EXTENSIONS = {
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp"}
 
+DEFAULT_OCR_DPI = 150
+
 _ocr_engine = None
 
 
@@ -65,7 +67,7 @@ def _load_ocr_pdf(path: Path) -> list[Document]:
     with pymupdf.open(str(path)) as pdf:
         for page_number in range(pdf.page_count):
             page = pdf[page_number]
-            pixmap = page.get_pixmap(dpi=200)
+            pixmap = page.get_pixmap(dpi=DEFAULT_OCR_DPI)
             text = _ocr_image_bytes(pixmap.tobytes("png"))
             documents.append(
                 Document(
