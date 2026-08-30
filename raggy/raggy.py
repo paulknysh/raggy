@@ -7,6 +7,7 @@ import yaml
 from langchain_chroma import Chroma
 
 from .config import RaggySettings
+from .llm_factory import ensure_ollama_model
 from .pipeline import build_rag_chain
 from .vectorstore import (
     build_index_config,
@@ -57,6 +58,10 @@ def load_config(config_path: str = "config.yaml") -> dict[str, Any]:
 
 def _init_db() -> Chroma:
     cfg = load_config()
+
+    # Embeddings are always local, so the (always-required) embedding model is
+    # pulled up front before any embedding work begins.
+    ensure_ollama_model(cfg["embedding_model"])
 
     vectorstore = initialize_db(
         persist_directory=cfg["persist_directory"],
@@ -122,7 +127,11 @@ def run_pipeline(query: str, chat_history: list | None = None) -> tuple[Any, lis
     cfg = load_config()
     vectorstore = _get_vectorstore()
 
-    # Build the RAG chain and retrieve retriever
+    # Build the RAG chain and retrieve retriever. When generation is local,
+    # ensure the configured LLM is present in Ollama before constructing it.
+    if cfg["llm_provider"] == "ollama":
+        ensure_ollama_model(cfg["llm_model"])
+
     doc_sink: list = []
     rag_chain, _ = build_rag_chain(
         vectorstore=vectorstore,
@@ -169,6 +178,9 @@ def run_pipeline_stream(
     """
     cfg = load_config()
     vectorstore = _get_vectorstore()
+
+    if cfg["llm_provider"] == "ollama":
+        ensure_ollama_model(cfg["llm_model"])
 
     collected: list = [] if doc_sink is None else doc_sink
     rag_chain, _ = build_rag_chain(

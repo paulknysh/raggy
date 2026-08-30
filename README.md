@@ -7,61 +7,49 @@ generation can run locally (Ollama) or via a cloud provider's API. It supports
 common formats (PDF, Word, PowerPoint, plain text, images) and uses OCR
 automatically when needed.
 
-Supported file formats — all other files are ignored:
+These are all supported file formats (all other formats are ignored):
 
 `.pdf`, `.docx`, `.pptx`, `.txt`, `.md`, `.markdown`, `.html`, `.htm`, `.png`, `.jpg`, `.jpeg`, `.bmp`.
 
 
-## Set up
+## Initial setup
 
-Ollama is required for running local embedding model (which feeds the on-disk DB):
+Ollama is required for running local embedding model (which feeds the on-disk DB), and also local LLM (if needed). To install Ollama run:
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
-ollama serve
-ollama pull nomic-embed-text   # default embedding model, always required
 ```
 
-In case LLM will be used locally via Ollama:
+Both the embedding model and the generation LLM (when generation is local via Ollama) are pulled automatically on first use using the names from `config.yaml` — so no manual pull is needed.
+
+If API key will be used for accessing LLM remotely, standard environment variable needs to be set (which is one of):
 
 ```bash
-ollama pull llama3.2           # default local LLM
+export GEMINI_API_KEY=...       # llm_provider: "google"
+export OPENAI_API_KEY=...       # llm_provider: "openai"
+export ANTHROPIC_API_KEY=...    # llm_provider: "anthropic"
 ```
 
-In case API key will be used for accessing LLM remotely, standard environment variable needs to be set (which is one of):
-
-```bash
-export GEMINI_API_KEY=...       # llm_provider: google
-export OPENAI_API_KEY=...       # llm_provider: openai
-export ANTHROPIC_API_KEY=...    # llm_provider: anthropic
-```
-
-Then `config.yaml` needs to be updated with proper `llm_provider` ("openai", "anthropic", "google") and `llm_model` (e.g. "gemini-3.5-flash")
+In this case `config.yaml` needs to be updated with proper `llm_provider` (`"openai"`, `"anthropic"`, `"google"`) and `llm_model` (e.g. `"gemini-3.5-flash"`)
 
 
 ## Installing `raggy`
 
 Requires Python 3.10 or newer.
 
-### Install with uv (recommended)
-
-`uv` creates and manages the virtual environment for you:
+You can install with `uv` (recommended):
 
 ```bash
-uv sync
+uv tool install -e .
 ```
 
-### Install with pip
-
-Requires an **active virtual environment**:
+Or with pip:
 
 ```bash
 pip install -e .
 ```
 
-### Testing, linting, and formatting
-
-The following command runs ruff lint, formatting, and pytest:
+Testing, linting (using ruff), and formatting (using pytest) is done in a single command:
 
 ```bash
 make sure
@@ -69,11 +57,15 @@ make sure
 
 ## Usage
 
-Type `raggy` command to run interactive CLI:
+To start CLI type:
+
+```bash
+raggy
+```
 
 <img src="assets/cli_demo.png">
 
-Or use it as a library:
+You can also use it programmatically:
 
 ```python
 from raggy import run_pipeline, source_label
@@ -122,7 +114,7 @@ is saved in different file formats (including PDF, plaintext, images, MS Word) a
 ## Demo eval
 
 `eval` folder currently contains simple Q&A dataset to test pipeline performance on demo dataset end-to-end.
-To run the test, start the Ollama service with the embedding model pulled (embeddings are always local), then run:
+To run the test, start the Ollama service with the embeddings always local and models pulled automatically, then run:
 
 ```bash
 uv run eval/run_eval.py

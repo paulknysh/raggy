@@ -1,3 +1,4 @@
+import subprocess
 import sys
 from types import ModuleType
 
@@ -94,3 +95,112 @@ def test_get_llm_google(monkeypatch):
 def test_get_llm_unknown_provider_raises():
     with pytest.raises(ValueError, match="Unknown llm_provider"):
         llm_factory.get_llm("grok", "grok-1", 0.0)
+
+
+def test_ensure_ollama_model_already_present(monkeypatch):
+    monkeypatch.setattr(llm_factory.shutil, "which", lambda _: "/usr/local/bin/ollama")
+
+    def fake_run(cmd, **kwargs):
+        assert kwargs.pop("capture_output") is True
+        assert kwargs.pop("text") is True
+        assert kwargs.pop("check", False) is False
+
+        class Result:
+            stdout = (
+                "NAME\tID\tSIZE\tMODIFIED\n"
+                "llama3.2:latest\ta80c4f17acd5\t2.0 GB\t2 days ago\n"
+                "nomic-embed-text:latest\t0a109f422b47\t274 MB\t2 days ago\n"
+            )
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(llm_factory.subprocess, "run", fake_run)
+
+    assert llm_factory.ensure_ollama_model("llama3.2") is False
+
+
+def test_ensure_ollama_model_pulls_missing(monkeypatch):
+    monkeypatch.setattr(llm_factory.shutil, "which", lambda _: "/usr/local/bin/ollama")
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append((list(cmd), dict(kwargs)))
+
+        class Result:
+            stdout = "NAME\tID\tSIZE\tMODIFIED\n"
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(llm_factory.subprocess, "run", fake_run)
+
+    assert llm_factory.ensure_ollama_model("llama3.2") is True
+    assert calls[-1][0] == ["/usr/local/bin/ollama", "pull", "llama3.2"]
+    assert calls[-1][1]["check"] is True
+
+
+def test_ensure_ollama_model_no_cli_raises(monkeypatch):
+    monkeypatch.setattr(llm_factory.shutil, "which", lambda _: None)
+    with pytest.raises(RuntimeError, match="ollama CLI not found"):
+        llm_factory.ensure_ollama_model("llama3.2")
+
+
+def test_ensure_ollama_model_already_present_with_explicit_latest_tag(monkeypatch):
+    monkeypatch.setattr(llm_factory.shutil, "which", lambda _: "/usr/local/bin/ollama")
+
+    def fake_run(cmd, **kwargs):
+        class Result:
+            stdout = (
+                "NAME\tID\tSIZE\tMODIFIED\n"
+                "llama3.2:latest\ta80c4f17acd5\t2.0 GB\t2 days ago\n"
+            )
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(llm_factory.subprocess, "run", fake_run)
+    assert llm_factory.ensure_ollama_model("llama3.2:latest") is False
+
+
+def test_ensure_ollama_model_missing_tag_triggers_pull(monkeypatch):
+    monkeypatch.setattr(llm_factory.shutil, "which", lambda _: "/usr/local/bin/ollama")
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append((list(cmd), dict(kwargs)))
+
+        class Result:
+            stdout = (
+                "NAME\tID\tSIZE\tMODIFIED\n"
+                "llama3.2:latest\ta80c4f17acd5\t2.0 GB\t2 days ago\n"
+            )
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(llm_factory.subprocess, "run", fake_run)
+
+    assert llm_factory.ensure_ollama_model("llama3.2:q4_K_M") is True
+    assert calls[-1][0] == ["/usr/local/bin/ollama", "pull", "llama3.2:q4_K_M"]
+
+
+def test_ensure_ollama_model_pull_failure_raises_runtime_error(monkeypatch):
+    monkeypatch.setattr(llm_factory.shutil, "which", lambda _: "/usr/local/bin/ollama")
+
+    def fake_run(cmd, **kwargs):
+        if cmd[1] == "list":
+
+            class ListResult:
+                stdout = "NAME\tID\tSIZE\tMODIFIED\n"
+                stderr = ""
+
+            return ListResult()
+
+        exc = subprocess.CalledProcessError(1, cmd)
+        exc.stderr = "error: pull model manifest: file does not exist"
+        raise exc
+
+    monkeypatch.setattr(llm_factory.subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError, match="Failed to pull Ollama model 'ghost'"):
+        llm_factory.ensure_ollama_model("ghost")

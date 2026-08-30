@@ -364,6 +364,7 @@ def test_init_db_forwards_config_to_initialize_db(monkeypatch):
     sentinel = object()
 
     monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
+    monkeypatch.setattr(raggy, "ensure_ollama_model", lambda model: False)
 
     def fake_initialize_db(**kwargs):
         captured.update(kwargs)
@@ -418,6 +419,7 @@ def test_run_pipeline_returns_response_and_retrieved_docs(monkeypatch):
 
     monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
     monkeypatch.setattr(raggy, "_get_vectorstore", lambda: object())
+    monkeypatch.setattr(raggy, "ensure_ollama_model", lambda model: False)
     monkeypatch.setattr(raggy, "build_rag_chain", fake_build_rag_chain)
 
     response, docs = raggy.run_pipeline("hello")
@@ -455,6 +457,7 @@ def test_run_pipeline_forwards_chat_history(monkeypatch):
 
     monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
     monkeypatch.setattr(raggy, "_get_vectorstore", lambda: object())
+    monkeypatch.setattr(raggy, "ensure_ollama_model", lambda model: False)
     monkeypatch.setattr(raggy, "build_rag_chain", fake_build_rag_chain)
 
     raggy.run_pipeline("follow-up", chat_history=history)
@@ -554,6 +557,7 @@ def test_run_pipeline_stream_yields_chunks_and_captures_docs(monkeypatch):
 
     monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
     monkeypatch.setattr(raggy, "_get_vectorstore", lambda: object())
+    monkeypatch.setattr(raggy, "ensure_ollama_model", lambda model: False)
     monkeypatch.setattr(raggy, "build_rag_chain", fake_build_rag_chain)
 
     doc_sink = []
@@ -590,6 +594,7 @@ def test_run_pipeline_stream_forwards_chat_history(monkeypatch):
 
     monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
     monkeypatch.setattr(raggy, "_get_vectorstore", lambda: object())
+    monkeypatch.setattr(raggy, "ensure_ollama_model", lambda model: False)
     monkeypatch.setattr(raggy, "build_rag_chain", fake_build_rag_chain)
 
     list(raggy.run_pipeline_stream("follow-up", chat_history=history))
@@ -614,6 +619,7 @@ def test_run_pipeline_propagates_unexpected_error(monkeypatch):
 
     monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
     monkeypatch.setattr(raggy, "_get_vectorstore", lambda: object())
+    monkeypatch.setattr(raggy, "ensure_ollama_model", lambda model: False)
 
     def boom(**_):
         raise RuntimeError("broken")
