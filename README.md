@@ -14,7 +14,7 @@ These are all supported file formats (all other formats are ignored):
 
 ## Initial setup
 
-Ollama is required for running local embedding model (which feeds the on-disk DB), and also local LLM (if needed). To install Ollama run:
+Ollama is required for running the local embedding model (which feeds the on-disk DB), and also local LLM (if needed). To install Ollama run:
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
@@ -22,7 +22,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 
 Both the embedding model and the generation LLM (when generation is local via Ollama) are pulled automatically on first use using the names from `config.yaml` — so no manual pull is needed.
 
-If API key will be used for accessing LLM remotely, standard environment variable needs to be set (which is one of):
+If API key will be used for accessing LLM remotely, a standard environment variable needs to be set (which is one of):
 
 ```bash
 export GEMINI_API_KEY=...       # llm_provider: "google"
@@ -49,13 +49,19 @@ Or with pip:
 pip install -e .
 ```
 
-Testing, linting (using ruff), and formatting (using pytest) is done in a single command:
+Running linting/formatting (using ruff), and unit tests (using pytest) is done in a single command:
 
 ```bash
 make sure
 ```
 
 ## Usage
+
+First, create your own git-ignored user config. This is only done once. For detailed overview of all config parameters see [Configuration](#configuration).
+
+```bash
+make config
+```
 
 To start CLI type:
 
@@ -109,7 +115,7 @@ working directory when you run the `raggy` CLI or import the library):
 
 This article (https://arxiv.org/abs/2608.06223v1) is used here for testing. It's an 8-page document -- each page
 is saved in different file formats (including PDF, plaintext, images, MS Word) and saved inside
-`sample_docs` directory. These directories are specified in `config.yaml` by default.
+`sample_docs` directory. This directory is specified in `config.yaml` by default.
 
 ## Demo eval
 

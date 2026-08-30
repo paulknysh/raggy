@@ -26,6 +26,7 @@ env/
 # OS files
 .DS_Store
 
-# Local application data
+# Local user/application data
 chroma_db/
 eval/results.json
+config.yaml
