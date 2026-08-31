@@ -9,17 +9,17 @@ chunk_overlap: 100
 batch_size: 100
 
 # LLM Configuration
-llm_provider: "ollama" # other options: "openai" | "anthropic" | "google"
-llm_model: "llama3.2"
+llm_provider: "ollama" # "ollama" | "openai" | "anthropic" | "google"
+llm_model: "phi4-mini"
 temperature: 0.0
 
 # RAG Pipeline Configuration
-search_type: "mmr"
-retrieve_k: 5
-mmr_fetch_k: 25
+search_type: "similarity"
+retrieve_k: 25
+# mmr_fetch_k: 25 # for search_type: "mmr"
 # optional cross-encoder re-ranking
-rerank_enabled: false
-rerank_model: "cross-encoder/ms-marco-MiniLM-L6-v2"
+rerank_enabled: true
+rerank_model: "onnx-community/bge-reranker-v2-m3-ONNX"
 rerank_k: 5
 # optional LLM-based relevance filtering of final chunks
 relevance_filter: false

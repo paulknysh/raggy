@@ -50,16 +50,39 @@ def test_score_pads_batch_and_returns_sigmoid_logits():
         return [np.array([[0.0], [2.0]], dtype=np.float32)]
 
     enc._session = SimpleNamespace(run=fake_run)
+    enc._input_names = {"input_ids", "attention_mask", "token_type_ids"}
 
     scores = enc.score([("q", "a"), ("q", "b")])
 
     assert scores == pytest.approx([0.5, reranker._sigmoid(2.0)])
 
 
+def test_score_omits_token_type_ids_when_model_has_no_such_input():
+    enc = reranker.OnnxCrossEncoder.__new__(reranker.OnnxCrossEncoder)
+    enc._pad_id = 0
+    enc.max_length = 512
+    enc._tokenizer = SimpleNamespace(
+        encode_batch=lambda pairs: [
+            FakeEncoding([1, 2, 3], [1, 1, 1], [0, 0, 0]),
+        ]
+    )
+
+    def fake_run(_outputs, feeds):
+        assert "token_type_ids" not in feeds
+        return [np.array([[1.0]], dtype=np.float32)]
+
+    enc._session = SimpleNamespace(run=fake_run)
+    enc._input_names = {"input_ids", "attention_mask"}
+
+    enc.score([("q", "a")])
+
+
 def test_get_cross_encoder_caches_shared_instance(monkeypatch):
     reranker._CACHE.clear()
     calls = []
-    monkeypatch.setattr(reranker, "default_onnx_file", lambda: "onnx/model.onnx")
+    monkeypatch.setattr(
+        reranker, "_resolve_onnx_file", lambda model, pref: "onnx/model.onnx"
+    )
     monkeypatch.setattr(
         reranker,
         "OnnxCrossEncoder",
@@ -71,3 +94,49 @@ def test_get_cross_encoder_caches_shared_instance(monkeypatch):
 
     assert first is second
     assert calls == [("model-a", "onnx/model.onnx")]
+
+
+def test_resolve_onnx_file_uses_preferred_when_present(monkeypatch):
+    reranker._MODEL_FILES_CACHE.clear()
+    monkeypatch.setattr(
+        reranker._HF_API,
+        "list_repo_files",
+        lambda repo_id: ["onnx/model_qint8_arm64.onnx", "tokenizer.json"],
+    )
+    assert (
+        reranker._resolve_onnx_file("repo", "onnx/model_qint8_arm64.onnx")
+        == "onnx/model_qint8_arm64.onnx"
+    )
+
+
+def test_resolve_onnx_file_falls_back_when_preferred_missing(monkeypatch):
+    reranker._MODEL_FILES_CACHE.clear()
+    monkeypatch.setattr(
+        reranker._HF_API,
+        "list_repo_files",
+        lambda repo_id: ["onnx/model_quantized.onnx", "tokenizer.json"],
+    )
+    assert (
+        reranker._resolve_onnx_file("repo", "onnx/model_qint8_arm64.onnx")
+        == "onnx/model_quantized.onnx"
+    )
+
+
+def test_resolve_onnx_file_raises_when_no_onnx_export(monkeypatch):
+    reranker._MODEL_FILES_CACHE.clear()
+    monkeypatch.setattr(
+        reranker._HF_API,
+        "list_repo_files",
+        lambda repo_id: ["model.safetensors", "tokenizer.json"],
+    )
+    with pytest.raises(RuntimeError, match="No ONNX export found"):
+        reranker._resolve_onnx_file("repo", "onnx/model_qint8_arm64.onnx")
+
+
+def test_resolve_onnx_file_caches_repo_files():
+    reranker._MODEL_FILES_CACHE.clear()
+    reranker._MODEL_FILES_CACHE["cached-repo"] = ("onnx/model.onnx",)
+    assert (
+        reranker._resolve_onnx_file("cached-repo", "onnx/model_qint8_arm64.onnx")
+        == "onnx/model.onnx"
+    )

@@ -10,8 +10,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from .reranker import DEFAULT_RERANKER_MODEL
-
 
 class RaggySettings(BaseModel):
     """Validated view of the runtime configuration.
@@ -33,11 +31,11 @@ class RaggySettings(BaseModel):
     llm_model: str
     temperature: float
     retrieve_k: int
-    mmr_fetch_k: int
-    search_type: Literal["mmr", "similarity", "similarity_score_threshold"]
+    mmr_fetch_k: int | None = None
+    search_type: Literal["mmr", "similarity"]
     relevance_filter: bool = False
     rerank_enabled: bool = False
-    rerank_model: str = DEFAULT_RERANKER_MODEL
+    rerank_model: str
     rerank_k: int | None = None
     system_prompt: str
 
@@ -55,10 +53,17 @@ class RaggySettings(BaseModel):
             raise ValueError("'sources' must contain at least one file or directory")
         return value
 
-    @field_validator("chunk_size", "batch_size", "retrieve_k", "mmr_fetch_k")
+    @field_validator("chunk_size", "batch_size", "retrieve_k")
     @classmethod
     def _positive_int(cls, value: int) -> int:
         if value <= 0:
+            raise ValueError("must be a positive integer")
+        return value
+
+    @field_validator("mmr_fetch_k")
+    @classmethod
+    def _mmr_fetch_k_positive(cls, value: int | None) -> int | None:
+        if value is not None and value <= 0:
             raise ValueError("must be a positive integer")
         return value
 
@@ -85,11 +90,14 @@ class RaggySettings(BaseModel):
 
     @model_validator(mode="after")
     def _cross_field_checks(self) -> "RaggySettings":
-        if self.mmr_fetch_k < self.retrieve_k:
-            raise ValueError(
-                f"mmr_fetch_k ({self.mmr_fetch_k}) must not be less than "
-                f"retrieve_k ({self.retrieve_k})"
-            )
+        if self.search_type == "mmr":
+            if self.mmr_fetch_k is None:
+                raise ValueError("mmr_fetch_k is required when search_type is 'mmr'")
+            if self.mmr_fetch_k < self.retrieve_k:
+                raise ValueError(
+                    f"mmr_fetch_k ({self.mmr_fetch_k}) must not be less than "
+                    f"retrieve_k ({self.retrieve_k})"
+                )
         if self.rerank_k is not None and self.rerank_k > self.retrieve_k:
             raise ValueError(
                 f"rerank_k ({self.rerank_k}) must not be greater than "

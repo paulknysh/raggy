@@ -57,7 +57,11 @@ def test_get_retriever_uses_vectorstore_configuration():
             return "retriever"
 
     result = pipeline.get_retriever(
-        FakeVectorstore(), search_type="similarity", k=8, fetch_k=10
+        FakeVectorstore(),
+        search_type="similarity",
+        retrieve_k=8,
+        mmr_fetch_k=10,
+        rerank_model="test-reranker",
     )
 
     assert result == "retriever"
@@ -89,8 +93,8 @@ def test_get_retriever_wraps_cross_encoder_when_rerank_enabled(monkeypatch):
     result = pipeline.get_retriever(
         FakeVectorstore(),
         search_type="similarity",
-        k=5,
-        fetch_k=25,
+        retrieve_k=5,
+        mmr_fetch_k=25,
         rerank_enabled=True,
         rerank_model="reranker-model",
     )
@@ -132,8 +136,8 @@ def test_get_retriever_mmr_always_uses_k_and_fetch_k_with_rerank_k(monkeypatch):
     result = pipeline.get_retriever(
         FakeVectorstore(),
         search_type="mmr",
-        k=5,
-        fetch_k=25,
+        retrieve_k=5,
+        mmr_fetch_k=25,
         rerank_enabled=True,
         rerank_model="reranker-model",
         rerank_k=3,
@@ -248,9 +252,10 @@ def test_build_rag_chain_threads_history(monkeypatch):
         llm_provider="ollama",
         system_prompt="sys",
         search_type="similarity",
-        k=5,
-        fetch_k=25,
+        retrieve_k=5,
+        mmr_fetch_k=25,
         temperature=0.0,
+        rerank_model="test-reranker",
         chat_history=history,
     )
 
@@ -292,9 +297,10 @@ def test_build_rag_chain_without_history_skips_condense(monkeypatch):
         llm_provider="ollama",
         system_prompt="sys",
         search_type="similarity",
-        k=5,
-        fetch_k=25,
+        retrieve_k=5,
+        mmr_fetch_k=25,
         temperature=0.0,
+        rerank_model="test-reranker",
     )
 
     out = chain.invoke({"question": "plain", "chat_history": []})
@@ -328,9 +334,10 @@ def test_build_rag_chain_skips_relevance_filter_when_disabled(monkeypatch):
         llm_provider="ollama",
         system_prompt="sys",
         search_type="similarity",
-        k=5,
-        fetch_k=25,
+        retrieve_k=5,
+        mmr_fetch_k=25,
         temperature=0.0,
+        rerank_model="test-reranker",
         relevance_filter=False,
     )
 
@@ -364,9 +371,10 @@ def test_build_rag_chain_applies_relevance_filter_when_enabled(monkeypatch):
         llm_provider="ollama",
         system_prompt="sys",
         search_type="similarity",
-        k=5,
-        fetch_k=25,
+        retrieve_k=5,
+        mmr_fetch_k=25,
         temperature=0.0,
+        rerank_model="test-reranker",
         relevance_filter=True,
     )
 

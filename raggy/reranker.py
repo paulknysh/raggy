@@ -15,16 +15,27 @@ from collections.abc import Sequence
 
 import numpy as np
 import onnxruntime as ort
-from huggingface_hub import hf_hub_download
+from huggingface_hub import HfApi, hf_hub_download
 from langchain_core.cross_encoders import BaseCrossEncoder
 from tokenizers import Tokenizer
-
-DEFAULT_RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L6-v2"
 
 _ONNX_VARIANTS = {
     "arm64": "onnx/model_qint8_arm64.onnx",
     "default": "onnx/model.onnx",
 }
+
+# Candidate ONNX filenames tried in order when the platform-preferred variant
+# is not present in a model repo. This lets models that only publish community
+# exports (e.g. ``onnx-community/bge-reranker-v2-m3-ONNX``) still work.
+_ONNX_FALLBACKS = (
+    "onnx/model_quantized.onnx",
+    "onnx/model_int8.onnx",
+    "onnx/model_q8.onnx",
+    "onnx/model.onnx",
+)
+
+_MODEL_FILES_CACHE: dict[str, tuple[str, ...]] = {}
+_HF_API = HfApi()
 
 
 def default_onnx_file() -> str:
@@ -36,6 +47,38 @@ def default_onnx_file() -> str:
     if platform.system() == "Darwin" and platform.machine() == "arm64":
         return _ONNX_VARIANTS["arm64"]
     return _ONNX_VARIANTS["default"]
+
+
+def _resolve_onnx_file(repo_id: str, preferred: str) -> str:
+    """Pick an ONNX filename that actually exists in ``repo_id``.
+
+    The platform-preferred variant comes first; if the repo doesn't carry it
+    (many cross-encoders ship only safetensors weights or community ONNX
+    exports under a different name), fall back to known variant names. When no
+    ONNX export exists at all, raise an actionable error.
+    """
+    files = _MODEL_FILES_CACHE.get(repo_id)
+    if files is None:
+        files = tuple(_HF_API.list_repo_files(repo_id))
+        _MODEL_FILES_CACHE[repo_id] = files
+
+    candidates = (preferred,) + _ONNX_FALLBACKS
+    for candidate in candidates:
+        if candidate in files:
+            # if candidate != preferred:
+            #     print(
+            #         f"reranker: '{preferred}' not found for {repo_id}, "
+            #         f"using '{candidate}' instead"
+            #     )
+            return candidate
+
+    available = ", ".join(f for f in files if f.endswith(".onnx"))
+    raise RuntimeError(
+        f"No ONNX export found for reranker model '{repo_id}'. "
+        f"This reranker requires a model repo that ships pre-exported ONNX "
+        f"weights (e.g. 'onnx-community/{repo_id.split('/')[-1]}-ONNX'). "
+        f"Available .onnx files: {available or 'none'}"
+    )
 
 
 def _sigmoid(logit: float) -> float:
@@ -52,14 +95,14 @@ class OnnxCrossEncoder(BaseCrossEncoder):
 
     def __init__(
         self,
-        model: str = DEFAULT_RERANKER_MODEL,
+        model: str,
         onnx_file: str | None = None,
         max_length: int = 512,
     ) -> None:
         self.model = model
         self.max_length = max_length
 
-        onnx_file = onnx_file or default_onnx_file()
+        onnx_file = onnx_file or _resolve_onnx_file(model, default_onnx_file())
         self.onnx_file = onnx_file
         model_path = hf_hub_download(repo_id=model, filename=onnx_file)
         tokenizer_path = hf_hub_download(repo_id=model, filename="tokenizer.json")
@@ -70,6 +113,7 @@ class OnnxCrossEncoder(BaseCrossEncoder):
         self._session = ort.InferenceSession(
             model_path, providers=["CPUExecutionProvider"]
         )
+        self._input_names = {i.name for i in self._session.get_inputs()}
 
     def score(self, text_pairs: Sequence[tuple[str, str]]) -> list[float]:
         """Return a relevance probability in (0, 1) for each text pair.
@@ -96,8 +140,11 @@ class OnnxCrossEncoder(BaseCrossEncoder):
         feeds = {
             "input_ids": np.asarray(input_ids, dtype=np.int64),
             "attention_mask": np.asarray(attention_mask, dtype=np.int64),
-            "token_type_ids": np.asarray(token_type_ids, dtype=np.int64),
         }
+        # RoBERTa/XLMRoberta-family rerankers take no token-type ids; only feed
+        # them to BERT-style models whose ONNX graph declares the input.
+        if "token_type_ids" in self._input_names:
+            feeds["token_type_ids"] = np.asarray(token_type_ids, dtype=np.int64)
         logits = self._session.run(None, feeds)[0]
         return [_sigmoid(float(v)) for v in logits[:, 0]]
 
@@ -107,7 +154,7 @@ _CACHE_LOCK = threading.Lock()
 
 
 def get_cross_encoder(
-    model: str = DEFAULT_RERANKER_MODEL,
+    model: str,
     onnx_file: str | None = None,
 ) -> OnnxCrossEncoder:
     """Return a shared ``OnnxCrossEncoder`` instance.
@@ -116,7 +163,7 @@ def get_cross_encoder(
     is reused across calls, so long-running processes (e.g. the eval harness)
     only initialize the model once.
     """
-    onnx_file = onnx_file or default_onnx_file()
+    onnx_file = onnx_file or _resolve_onnx_file(model, default_onnx_file())
     key = (model, onnx_file)
     with _CACHE_LOCK:
         if key not in _CACHE:

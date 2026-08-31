@@ -101,13 +101,13 @@ working directory when you run the `raggy` CLI or import the library):
 | `chunk_overlap` | character overlap between adjacent chunks |
 | `batch_size` | max number of chunks embedded per batch into Chroma (default `100`); the number of batches is derived dynamically from the chunk count |
 | `llm_provider` | where generation runs: `ollama` (local, default) or `openai`/`anthropic`/`google` (via API) |
-| `llm_model` | chat model for generation (e.g. `llama3.2` locally, or a remote model name like `gpt-4o`) |
+| `llm_model` | chat model for generation (e.g. `phi4-mini` locally, or a remote model name like `gemini-3.5-flash`) |
 | `temperature` | LLM sampling temperature |
-| `search_type` | retriever search type (e.g. `mmr` or `similarity`) |
+| `search_type` | retriever search type (`similarity` or `mmr`) |
 | `retrieve_k` | number of chunks returned by the first-stage retrieval |
 | `mmr_fetch_k` | number of candidate chunks fetched before MMR reranking (used when `search_type: mmr`) |
-| `rerank_enabled` | whether to use additional reranking after retrieval stage (off by default) |
-| `rerank_model` | Hugging Face ID of the cross-encoder model (default `cross-encoder/ms-marco-MiniLM-L6-v2`) |
+| `rerank_enabled` | whether to use additional reranking after retrieval stage (on by default) |
+| `rerank_model` | Hugging Face ID of the cross-encoder model (default `onnx-community/bge-reranker-v2-m3-ONNX`) |
 | `rerank_k` | final number of chunks returned by the cross-encoder (must be `<= retrieve_k`) |
 | `relevance_filter` | whether the LLM filters retrieved chunks for relevance before answering (off by default) |
 | `system_prompt` | system prompt dictating how the LLM should answer; must contain a `{context}` placeholder |

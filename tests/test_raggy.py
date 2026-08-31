@@ -275,7 +275,6 @@ def test_load_config_rejects_unknown_search_type(tmp_path):
         "llm_model: test-llm\n"
         "temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "mmr_fetch_k: 25\n"
         "search_type: bogus\n"
         "rerank_enabled: false\n"
         "system_prompt: use this\n",
@@ -283,6 +282,53 @@ def test_load_config_rejects_unknown_search_type(tmp_path):
     )
 
     with pytest.raises(ValueError, match="search_type"):
+        raggy.load_config(str(config_file))
+
+
+def test_load_config_similarity_without_mmr_fetch_k(tmp_path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "sources: ./docs\n"
+        "persist_directory: ./my_db\n"
+        "chunk_size: 500\n"
+        "chunk_overlap: 100\n"
+        "batch_size: 100\n"
+        "embedding_model: test-embed\n"
+        "llm_model: test-llm\n"
+        "temperature: 0.0\n"
+        "retrieve_k: 5\n"
+        "search_type: similarity\n"
+        "rerank_enabled: false\n"
+        "rerank_model: rerank-x\n"
+        "system_prompt: use this\n",
+        encoding="utf-8",
+    )
+
+    cfg = raggy.load_config(str(config_file))
+    assert cfg["mmr_fetch_k"] is None
+    assert cfg["search_type"] == "similarity"
+
+
+def test_load_config_requires_mmr_fetch_k_for_mmr(tmp_path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "sources: ./docs\n"
+        "persist_directory: ./my_db\n"
+        "chunk_size: 500\n"
+        "chunk_overlap: 100\n"
+        "batch_size: 100\n"
+        "embedding_model: test-embed\n"
+        "llm_model: test-llm\n"
+        "temperature: 0.0\n"
+        "retrieve_k: 5\n"
+        "search_type: mmr\n"
+        "rerank_enabled: false\n"
+        "rerank_model: rerank-x\n"
+        "system_prompt: use this\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="mmr_fetch_k is required"):
         raggy.load_config(str(config_file))
 
 
@@ -347,6 +393,7 @@ def test_load_config_rejects_mmr_fetch_k_less_than_retrieve_k(tmp_path):
         "mmr_fetch_k: 3\n"
         "search_type: mmr\n"
         "rerank_enabled: false\n"
+        "rerank_model: rerank-x\n"
         "system_prompt: use this\n",
         encoding="utf-8",
     )
@@ -370,6 +417,7 @@ def test_load_config_coerces_numeric_strings(tmp_path):
         "mmr_fetch_k: '25'\n"
         "search_type: mmr\n"
         "rerank_enabled: false\n"
+        "rerank_model: rerank-x\n"
         "system_prompt: use this\n",
         encoding="utf-8",
     )

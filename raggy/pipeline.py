@@ -10,7 +10,7 @@ from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrou
 
 from .llm_factory import get_llm
 from .llm_filter import filter_docs_by_relevance
-from .reranker import DEFAULT_RERANKER_MODEL, get_cross_encoder
+from .reranker import get_cross_encoder
 
 _ROLE_LABELS = {"human": "User", "ai": "Assistant", "system": "System"}
 
@@ -62,10 +62,10 @@ def condense_question(chat_history: list[tuple[str, str]], question: str, llm) -
 def get_retriever(
     vectorstore: Chroma,
     search_type: str,
-    k: int,
-    fetch_k: int,
+    retrieve_k: int,
+    rerank_model: str,
+    mmr_fetch_k: int | None = None,
     rerank_enabled: bool = False,
-    rerank_model: str = DEFAULT_RERANKER_MODEL,
     rerank_k: int | None = None,
 ):
     """Configures and returns the retriever.
@@ -73,22 +73,23 @@ def get_retriever(
     The pipeline is two-stage:
 
       1. First stage (always): vector retrieval over the whole corpus. With
-         ``search_type: "mmr"`` this is an MMR pass that returns ``k`` chunks
-         while considering ``fetch_k`` candidates. ``k`` and ``fetch_k``
-         always apply to this stage, whether or not re-ranking is enabled.
+         ``search_type: "mmr"`` this is an MMR pass that returns ``retrieve_k``
+         chunks while considering ``mmr_fetch_k`` candidates. ``retrieve_k``
+         and ``mmr_fetch_k`` always apply to this stage, whether or not
+         re-ranking is enabled.
       2. Second stage (optional): a cross-encoder scores each
          (query, chunk) pair and keeps the top ``rerank_k`` chunks.
-         ``rerank_k`` defaults to ``k`` and must not exceed ``k``.
+         ``rerank_k`` defaults to ``retrieve_k`` and must not exceed it.
     """
-    search_kwargs: dict = {"k": k}
+    search_kwargs: dict = {"k": retrieve_k}
     if search_type == "mmr":
-        search_kwargs["fetch_k"] = fetch_k
+        search_kwargs["fetch_k"] = mmr_fetch_k
     retriever = vectorstore.as_retriever(
         search_type=search_type, search_kwargs=search_kwargs
     )
 
     if rerank_enabled:
-        final_k = rerank_k if rerank_k is not None else k
+        final_k = rerank_k if rerank_k is not None else retrieve_k
         compressor = CrossEncoderReranker(
             model=get_cross_encoder(rerank_model), top_n=final_k
         )
@@ -126,12 +127,12 @@ def build_rag_chain(
     llm_provider: str,
     system_prompt: str,
     search_type: str,
-    k: int,
-    fetch_k: int,
+    retrieve_k: int,
     temperature: float,
+    rerank_model: str,
+    mmr_fetch_k: int | None = None,
     relevance_filter: bool = False,
     rerank_enabled: bool = False,
-    rerank_model: str = DEFAULT_RERANKER_MODEL,
     rerank_k: int | None = None,
     doc_sink: list | None = None,
     chat_history: list | None = None,
@@ -155,8 +156,8 @@ def build_rag_chain(
     retriever = get_retriever(
         vectorstore,
         search_type=search_type,
-        k=k,
-        fetch_k=fetch_k,
+        retrieve_k=retrieve_k,
+        mmr_fetch_k=mmr_fetch_k,
         rerank_enabled=rerank_enabled,
         rerank_model=rerank_model,
         rerank_k=rerank_k,
