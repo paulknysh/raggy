@@ -17,7 +17,7 @@ from .vectorstore import build_index_config, db_needs_rebuild
 logger = logging.getLogger(__name__)
 
 ACCENT = "blue"
-STATUS_ACCENT = "grey"
+STATUS_ACCENT = "blue"
 
 MEMORY_TURNS = 8
 
@@ -86,10 +86,10 @@ def run_chat() -> None:
     console.print(
         Panel.fit(
             f"[{ACCENT}]{LOGO}[/{ACCENT}]\n\n"
-            "You can specify source folders/files and other parameters in "
-            "[bold]config.yaml[/bold].\n\n"
-            "Type [bold]exit[/bold], [bold]quit[/bold] or [bold]q[/bold] to leave.\n"
-            "Type [bold]/clear[/bold] to reset the conversation memory.",
+            "Specify source folders/files and other parameters in "
+            "[bold]config.yaml[/bold]\n\n"
+            "[bold]/clear[/bold] to reset the conversation memory\n"
+            "[bold]/exit[/bold] to leave",
             border_style=ACCENT,
         )
     )
@@ -99,14 +99,14 @@ def run_chat() -> None:
 
     while True:
         try:
-            query = _ask("Question: ")
+            query = _ask(">>> ")
         except (KeyboardInterrupt, EOFError):
             console.print()
             console.print(f"[{ACCENT}]See you![/{ACCENT}]")
             return
 
         query = query.strip()
-        if query.lower() in {"exit", "quit", "q"}:
+        if query == "/exit":
             console.print()
             console.print(f"[{ACCENT}]See you![/{ACCENT}]")
             return
