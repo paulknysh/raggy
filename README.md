@@ -109,6 +109,7 @@ working directory when you run the `raggy` CLI or import the library):
 | `rerank_enabled` | whether to use additional reranking after retrieval stage (off by default) |
 | `rerank_model` | Hugging Face ID of the cross-encoder model (default `cross-encoder/ms-marco-MiniLM-L6-v2`) |
 | `rerank_k` | final number of chunks returned by the cross-encoder (must be `<= retrieve_k`) |
+| `relevance_filter` | whether the LLM filters retrieved chunks for relevance before answering (off by default) |
 | `system_prompt` | system prompt dictating how the LLM should answer; must contain a `{context}` placeholder |
 
 ## Demo dataset

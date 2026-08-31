@@ -35,6 +35,7 @@ class RaggySettings(BaseModel):
     retrieve_k: int
     mmr_fetch_k: int
     search_type: Literal["mmr", "similarity", "similarity_score_threshold"]
+    relevance_filter: bool = False
     rerank_enabled: bool = False
     rerank_model: str = DEFAULT_RERANKER_MODEL
     rerank_k: int | None = None

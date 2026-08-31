@@ -21,6 +21,8 @@ mmr_fetch_k: 25
 rerank_enabled: false
 rerank_model: "cross-encoder/ms-marco-MiniLM-L6-v2"
 rerank_k: 5
+# optional LLM-based relevance filtering of final chunks
+relevance_filter: false
 
 system_prompt: |
   You are a RAG (Retrieval-Augmented Generation) assistant answering a user's

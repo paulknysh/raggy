@@ -12,12 +12,12 @@
 
 ## Architecture
 - `raggy/raggy.py` — orchestration: `load_config`, `run_pipeline`, `run_pipeline_stream`, `refresh_db`; caches the vectorstore in a module global.
-- `raggy/pipeline.py` — LCEL chain: retriever → LLM relevance filter → `format_and_capture` (appends docs to `doc_sink`) → prompt → LLM.
+- `raggy/pipeline.py` — LCEL chain: retriever → (optional) LLM relevance filter when `relevance_filter: true` (off by default) → `format_and_capture` (appends docs to `doc_sink`) → prompt → LLM.
 - `raggy/vectorstore.py` — Chroma init/ingest/batching + manifest-based rebuild detection (ANY change to sources/chunk_size/chunk_overlap/embedding_model/content_hash ⇒ full wipe+reindex).
 - `raggy/loaders.py` — format loaders; OCR (RapidOCR) for images and textless PDFs; unsupported files ignored not errored.
 - `raggy/reranker.py` — onnxruntime cross-encoder, cached globally (no PyTorch).
 - `raggy/llm_factory.py` — provider-agnostic `get_llm`; dispatches on `llm_provider` to Ollama (local) or OpenAI/Anthropic/Google (API, key from env var).
-- `raggy/llm_filter.py` — LLM-based relevance filter (`filter_docs_by_relevance`); single chat-LLM call flags each retrieved chunk yes/no, keeps only "yes" in original order; fail-open and strict.
+- `raggy/llm_filter.py` — LLM-based relevance filter (`filter_docs_by_relevance`); single chat-LLM call flags each retrieved chunk yes/no, keeps only "yes" in original order; fail-open and strict. Gated behind the `relevance_filter` config flag (off by default) — the filter only runs when the flag is enabled.
 - `raggy/cli.py` — rich-based chat CLI; catches errors that library functions deliberately propagate.
 
 ## Conventions

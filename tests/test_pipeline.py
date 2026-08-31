@@ -302,3 +302,74 @@ def test_build_rag_chain_without_history_skips_condense(monkeypatch):
     assert out == "final answer"
     assert "condense_called" not in captured
     assert _message_contents(captured["prompt_messages"]) == ["sys", "plain"]
+
+
+def test_build_rag_chain_skips_relevance_filter_when_disabled(monkeypatch):
+    captured = {"filter_called": False}
+    fake_llm = FakeLLM(captured)
+    monkeypatch.setattr(pipeline, "get_llm", lambda *a, **k: fake_llm)
+    monkeypatch.setattr(
+        pipeline,
+        "get_retriever",
+        lambda *a, **k: SimpleNamespace(
+            invoke=lambda q: [SimpleNamespace(page_content="doc")]
+        ),
+    )
+
+    def fake_filter(query, docs, llm):
+        captured["filter_called"] = True
+        return docs
+
+    monkeypatch.setattr(pipeline, "filter_docs_by_relevance", fake_filter)
+
+    chain, _ = pipeline.build_rag_chain(
+        vectorstore=object(),
+        llm_model="m",
+        llm_provider="ollama",
+        system_prompt="sys",
+        search_type="similarity",
+        k=5,
+        fetch_k=25,
+        temperature=0.0,
+        relevance_filter=False,
+    )
+
+    out = chain.invoke({"question": "plain", "chat_history": []})
+
+    assert out == "final answer"
+    assert captured["filter_called"] is False
+
+
+def test_build_rag_chain_applies_relevance_filter_when_enabled(monkeypatch):
+    captured = {"filter_called": False}
+    fake_llm = FakeLLM(captured)
+    monkeypatch.setattr(pipeline, "get_llm", lambda *a, **k: fake_llm)
+    monkeypatch.setattr(
+        pipeline,
+        "get_retriever",
+        lambda *a, **k: SimpleNamespace(
+            invoke=lambda q: [SimpleNamespace(page_content="doc")]
+        ),
+    )
+
+    def fake_filter(query, docs, llm):
+        captured["filter_called"] = True
+        return docs
+
+    monkeypatch.setattr(pipeline, "filter_docs_by_relevance", fake_filter)
+
+    chain, _ = pipeline.build_rag_chain(
+        vectorstore=object(),
+        llm_model="m",
+        llm_provider="ollama",
+        system_prompt="sys",
+        search_type="similarity",
+        k=5,
+        fetch_k=25,
+        temperature=0.0,
+        relevance_filter=True,
+    )
+
+    chain.invoke({"question": "plain", "chat_history": []})
+
+    assert captured["filter_called"] is True

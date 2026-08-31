@@ -129,6 +129,7 @@ def build_rag_chain(
     k: int,
     fetch_k: int,
     temperature: float,
+    relevance_filter: bool = False,
     rerank_enabled: bool = False,
     rerank_model: str = DEFAULT_RERANKER_MODEL,
     rerank_k: int | None = None,
@@ -139,11 +140,11 @@ def build_rag_chain(
     Builds the RAG Chain using LangChain Expression Language (LCEL).
     Returns a tuple containing (rag_chain, retriever).
 
-    After retrieval, the LLM grades each chunk as relevant/irrelevant in a
-    single pass and only the relevant ones reach the prompt. The surviving
-    Documents are captured in a single pass and appended to ``doc_sink``
-    (if provided), so callers can inspect exactly what the LLM saw without
-    running the retriever a second time.
+    When ``relevance_filter`` is true, the LLM grades each chunk as
+    relevant/irrelevant in a single pass and only the relevant ones reach
+    the prompt; it is off by default. The surviving Documents are captured in a single
+    pass and appended to ``doc_sink`` (if provided), so callers can inspect
+    exactly what the LLM saw without running the retriever a second time.
 
     When ``chat_history`` is provided (a list of ``("human"|"ai", content)``
     tuples), the chain is memory-aware: retrieval runs against a standalone
@@ -175,7 +176,8 @@ def build_rag_chain(
             condense_question(history, question, llm) if history else question
         )
         docs = retriever.invoke(search_query)
-        docs = filter_docs_by_relevance(search_query, docs, llm)
+        if relevance_filter:
+            docs = filter_docs_by_relevance(search_query, docs, llm)
         return format_and_capture(docs)
 
     context_step: Runnable = RunnableLambda(select_context)
