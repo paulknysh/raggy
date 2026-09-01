@@ -29,7 +29,7 @@
   },
   {
     "id": "qa_005",
-    "question": "What GPU hardware was used to run the TS-RAG experiments?",
+    "question": "What GPU was used in experiments?",
     "reference": "An NVIDIA V100 GPU with 32GB of memory.",
     "answer_can_be_verified": true,
     "ground_truth_sources": ["ts_rag-pages-5.docx"]

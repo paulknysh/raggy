@@ -333,10 +333,16 @@ def _render_summary(rows: list[dict[str, Any]]) -> None:
     print("  ".join("-" * w for w in widths))
 
     for key in RETRIEVAL_METRICS + GENERATION_METRICS:
-        values = _metric_values(rows, key)
-        if not values:
+        if key in GENERATION_METRICS:
+            per_row = [r.get("generation", {}).get(key) for r in rows]
+        else:
+            per_row = [r.get("retrieval", {}).get(key) for r in rows]
+        if all(v is None for v in per_row):
             continue
-        line = [key, f"{overall[key]:.3f}"] + [fmt(v) for v in values]
+        agg = overall[key]
+        line = [key, f"{agg:.3f}" if agg is not None else "-"] + [
+            fmt(v) if v is not None else "-" for v in per_row
+        ]
         print("  ".join(c.ljust(widths[j]) for j, c in enumerate(line)))
 
 

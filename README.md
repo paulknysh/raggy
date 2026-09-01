@@ -107,7 +107,7 @@ working directory when you run the `raggy` CLI or import the library):
 | `hybrid_search` | whether to fuse dense retrieval with a lexical BM25 (`bm25s`) pass via reciprocal rank fusion (on by default) |
 | `hybrid_alpha` | weight of the dense/vector pass in hybrid fusion (`1.0` = vector only, `0.0` = BM25 only, default `0.5`) |
 | `rerank_enabled` | whether to use additional reranking after retrieval stage (on by default) |
-| `rerank_model` | Hugging Face ID of the cross-encoder model (default `onnx-community/bge-reranker-v2-m3-ONNX`) |
+| `rerank_model` | Hugging Face ID of the cross-encoder model |
 | `rerank_k` | final number of chunks returned by the cross-encoder (must be `<= retrieve_k`) |
 | `relevance_filter` | whether the LLM filters retrieved chunks for relevance before answering (off by default) |
 | `system_prompt` | system prompt dictating how the LLM should answer; must contain a `{context}` placeholder |
