@@ -85,7 +85,7 @@ def test_get_retriever_wraps_cross_encoder_when_rerank_enabled(monkeypatch):
         captured["compression"] = kwargs
         return "compressed-retriever"
 
-    monkeypatch.setattr(pipeline, "CrossEncoderReranker", fake_compressor_cls)
+    monkeypatch.setattr(pipeline, "ScoreAnnotatingReranker", fake_compressor_cls)
     monkeypatch.setattr(
         pipeline, "ContextualCompressionRetriever", fake_compression_retriever
     )
@@ -225,7 +225,6 @@ def test_build_rag_chain_threads_history(monkeypatch):
             invoke=lambda q: [SimpleNamespace(page_content="doc")]
         ),
     )
-    monkeypatch.setattr(pipeline, "filter_docs_by_relevance", lambda q, docs, llm: docs)
 
     def fake_condense(history, question, llm):
         captured["history"] = history
@@ -270,7 +269,6 @@ def test_build_rag_chain_without_history_skips_condense(monkeypatch):
             invoke=lambda q: [SimpleNamespace(page_content="doc")]
         ),
     )
-    monkeypatch.setattr(pipeline, "filter_docs_by_relevance", lambda q, docs, llm: docs)
 
     def fake_condense(*args):
         captured["condense_called"] = True
@@ -295,9 +293,9 @@ def test_build_rag_chain_without_history_skips_condense(monkeypatch):
     assert _message_contents(captured["prompt_messages"]) == ["sys", "plain"]
 
 
-def test_build_rag_chain_skips_relevance_filter_when_disabled(monkeypatch):
-    captured = {"filter_called": False}
-    fake_llm = FakeLLM(captured)
+def test_build_rag_chain_applies_score_threshold(monkeypatch):
+    captured = {"threshold": None}
+    fake_llm = FakeLLM({})
     monkeypatch.setattr(pipeline, "get_llm", lambda *a, **k: fake_llm)
     monkeypatch.setattr(
         pipeline,
@@ -307,11 +305,11 @@ def test_build_rag_chain_skips_relevance_filter_when_disabled(monkeypatch):
         ),
     )
 
-    def fake_filter(query, docs, llm):
-        captured["filter_called"] = True
+    def fake_threshold(docs, threshold):
+        captured["threshold"] = threshold
         return docs
 
-    monkeypatch.setattr(pipeline, "filter_docs_by_relevance", fake_filter)
+    monkeypatch.setattr(pipeline, "filter_by_score_threshold", fake_threshold)
 
     chain, _ = pipeline.build_rag_chain(
         vectorstore=object(),
@@ -321,44 +319,9 @@ def test_build_rag_chain_skips_relevance_filter_when_disabled(monkeypatch):
         retrieve_k=5,
         temperature=0.0,
         rerank_model="test-reranker",
-        relevance_filter=False,
-    )
-
-    out = chain.invoke({"question": "plain", "chat_history": []})
-
-    assert out == "final answer"
-    assert captured["filter_called"] is False
-
-
-def test_build_rag_chain_applies_relevance_filter_when_enabled(monkeypatch):
-    captured = {"filter_called": False}
-    fake_llm = FakeLLM(captured)
-    monkeypatch.setattr(pipeline, "get_llm", lambda *a, **k: fake_llm)
-    monkeypatch.setattr(
-        pipeline,
-        "get_retriever",
-        lambda *a, **k: SimpleNamespace(
-            invoke=lambda q: [SimpleNamespace(page_content="doc")]
-        ),
-    )
-
-    def fake_filter(query, docs, llm):
-        captured["filter_called"] = True
-        return docs
-
-    monkeypatch.setattr(pipeline, "filter_docs_by_relevance", fake_filter)
-
-    chain, _ = pipeline.build_rag_chain(
-        vectorstore=object(),
-        llm_model="m",
-        llm_provider="ollama",
-        system_prompt="sys",
-        retrieve_k=5,
-        temperature=0.0,
-        rerank_model="test-reranker",
-        relevance_filter=True,
+        rerank_threshold=0.3,
     )
 
     chain.invoke({"question": "plain", "chat_history": []})
 
-    assert captured["filter_called"] is True
+    assert captured["threshold"] == 0.3

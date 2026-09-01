@@ -33,10 +33,10 @@ class RaggySettings(BaseModel):
     retrieve_k: int
     hybrid_search: bool = True
     hybrid_alpha: float = 0.5
-    relevance_filter: bool = False
     rerank_enabled: bool = False
     rerank_model: str
     rerank_k: int | None = None
+    rerank_threshold: float = 0.0
     system_prompt: str
 
     @field_validator("sources", mode="before")
@@ -86,6 +86,13 @@ class RaggySettings(BaseModel):
     def _positive_rerank_k(cls, value: int | None) -> int | None:
         if value is not None and value <= 0:
             raise ValueError("must be a positive integer")
+        return value
+
+    @field_validator("rerank_threshold")
+    @classmethod
+    def _rerank_threshold_range(cls, value: float) -> float:
+        if not 0.0 <= value <= 1.0:
+            raise ValueError("must be between 0.0 and 1.0")
         return value
 
     @model_validator(mode="after")

@@ -61,6 +61,8 @@ def print_citations(retrieved_docs) -> None:
     if not retrieved_docs:
         return
 
+    has_scores = any("relevance_score" in doc.metadata for doc in retrieved_docs)
+
     table = Table(
         title=f"[bold {ACCENT}]Citations[/bold {ACCENT}]",
         title_style="bold",
@@ -71,13 +73,20 @@ def print_citations(retrieved_docs) -> None:
     )
     table.add_column("#", justify="right", style=ACCENT)  # width=3
     table.add_column("Source", style=ACCENT)
+    if has_scores:
+        table.add_column("Score", justify="right", style=ACCENT)
     table.add_column("Snippet", style="white")
 
     for i, doc in enumerate(retrieved_docs, 1):
         snippet = " ".join(doc.page_content.split())
         if len(snippet) > 140:
             snippet = snippet[:140] + "..."
-        table.add_row(str(i), source_label(doc), snippet)
+        score = doc.metadata.get("relevance_score")
+        score_cell = f"{score:.3f}" if score is not None else ""
+        if has_scores:
+            table.add_row(str(i), source_label(doc), score_cell, snippet)
+        else:
+            table.add_row(str(i), source_label(doc), snippet)
 
     console.print(table)
 

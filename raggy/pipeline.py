@@ -3,9 +3,6 @@ from langchain_classic.retrievers import (
     ContextualCompressionRetriever,
     EnsembleRetriever,
 )
-from langchain_classic.retrievers.document_compressors.cross_encoder_rerank import (
-    CrossEncoderReranker,
-)
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -13,8 +10,8 @@ from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrou
 
 from .bm25_retriever import get_bm25_retriever
 from .llm_factory import get_llm
-from .llm_filter import filter_docs_by_relevance
 from .reranker import get_cross_encoder
+from .score_filter import ScoreAnnotatingReranker, filter_by_score_threshold
 
 _ROLE_LABELS = {"human": "User", "ai": "Assistant", "system": "System"}
 
@@ -82,7 +79,7 @@ def get_retriever(
          the vector retriever is fused with a lexical ``bm25s`` retriever
          (loaded from the persisted index) via reciprocal rank fusion,
          weighting the dense pass by ``hybrid_alpha``.
-      2. Second stage (optional): a cross-encoder scores each
+       2. Second stage (optional): a cross-encoder scores each
          (query, chunk) pair and keeps the top ``rerank_k`` chunks.
          ``rerank_k`` defaults to ``retrieve_k`` and must not exceed it.
     """
@@ -100,7 +97,7 @@ def get_retriever(
 
     if rerank_enabled:
         final_k = rerank_k if rerank_k is not None else retrieve_k
-        compressor = CrossEncoderReranker(
+        compressor = ScoreAnnotatingReranker(
             model=get_cross_encoder(rerank_model), top_n=final_k
         )
         retriever = ContextualCompressionRetriever(
@@ -139,9 +136,9 @@ def build_rag_chain(
     retrieve_k: int,
     temperature: float,
     rerank_model: str,
-    relevance_filter: bool = False,
     rerank_enabled: bool = False,
     rerank_k: int | None = None,
+    rerank_threshold: float = 0.0,
     persist_directory: str | None = None,
     hybrid_search: bool = True,
     hybrid_alpha: float = 0.5,
@@ -152,11 +149,12 @@ def build_rag_chain(
     Builds the RAG Chain using LangChain Expression Language (LCEL).
     Returns a tuple containing (rag_chain, retriever).
 
-    When ``relevance_filter`` is true, the LLM grades each chunk as
-    relevant/irrelevant in a single pass and only the relevant ones reach
-    the prompt; it is off by default. The surviving Documents are captured in a single
-    pass and appended to ``doc_sink`` (if provided), so callers can inspect
-    exactly what the LLM saw without running the retriever a second time.
+    When ``rerank_threshold`` is above 0 the cross-encoder's relevance score
+    (see :mod:`raggy.score_filter`) is used to drop any reranked chunk
+    scoring below the threshold before the prompt; it is off by default. The
+    surviving Documents are captured in a single pass and appended to
+    ``doc_sink`` (if provided), so callers can inspect exactly what the LLM
+    saw without running the retriever a second time.
 
     When ``chat_history`` is provided (a list of ``("human"|"ai", content)``
     tuples), the chain is memory-aware: retrieval runs against a standalone
@@ -189,8 +187,7 @@ def build_rag_chain(
             condense_question(history, question, llm) if history else question
         )
         docs = retriever.invoke(search_query)
-        if relevance_filter:
-            docs = filter_docs_by_relevance(search_query, docs, llm)
+        docs = filter_by_score_threshold(docs, rerank_threshold)
         return format_and_capture(docs)
 
     context_step: Runnable = RunnableLambda(select_context)

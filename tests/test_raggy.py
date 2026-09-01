@@ -24,7 +24,6 @@ def test_load_config_reads_all_values(tmp_path):
         "llm_model: test-llm\n"
         "temperature: 0.4\n"
         "retrieve_k: 11\n"
-        "relevance_filter: true\n"
         "rerank_enabled: true\n"
         "rerank_model: rerank-x\n"
         "rerank_k: 4\n"
@@ -47,10 +46,10 @@ def test_load_config_reads_all_values(tmp_path):
         "retrieve_k": 11,
         "hybrid_search": True,
         "hybrid_alpha": 0.5,
-        "relevance_filter": True,
         "rerank_enabled": True,
         "rerank_model": "rerank-x",
         "rerank_k": 4,
+        "rerank_threshold": 0.0,
         "system_prompt": "use this",
     }
 
@@ -77,32 +76,6 @@ def test_load_config_llm_provider_defaults_to_ollama(tmp_path):
     cfg = raggy.load_config(str(config_file))
 
     assert cfg["llm_provider"] == "ollama"
-    assert cfg["relevance_filter"] is False
-
-
-def test_load_config_reads_relevance_filter_false(tmp_path):
-    config_file = tmp_path / "config.yaml"
-    config_file.write_text(
-        "sources:\n"
-        "  - ./docs\n"
-        "persist_directory: ./my_db\n"
-        "chunk_size: 500\n"
-        "chunk_overlap: 100\n"
-        "batch_size: 100\n"
-        "embedding_model: test-embed\n"
-        "llm_model: test-llm\n"
-        "temperature: 0.0\n"
-        "retrieve_k: 5\n"
-        "relevance_filter: false\n"
-        "rerank_enabled: false\n"
-        "rerank_model: rerank-x\n"
-        "system_prompt: use this\n",
-        encoding="utf-8",
-    )
-
-    cfg = raggy.load_config(str(config_file))
-
-    assert cfg["relevance_filter"] is False
 
 
 def test_load_config_reads_llm_provider(tmp_path):
@@ -222,6 +195,55 @@ def test_load_config_rejects_hybrid_alpha_out_of_range(tmp_path):
             encoding="utf-8",
         )
         with pytest.raises(ValueError, match="hybrid_alpha"):
+            raggy.load_config(str(config_file))
+
+
+def test_load_config_reads_rerank_threshold(tmp_path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "sources: ./docs\n"
+        "persist_directory: ./my_db\n"
+        "chunk_size: 500\n"
+        "chunk_overlap: 100\n"
+        "batch_size: 100\n"
+        "embedding_model: test-embed\n"
+        "llm_model: test-llm\n"
+        "temperature: 0.0\n"
+        "retrieve_k: 5\n"
+        "rerank_enabled: true\n"
+        "rerank_model: rerank-x\n"
+        "rerank_k: 5\n"
+        "rerank_threshold: 0.3\n"
+        "system_prompt: use this\n",
+        encoding="utf-8",
+    )
+
+    cfg = raggy.load_config(str(config_file))
+
+    assert cfg["rerank_threshold"] == 0.3
+
+
+def test_load_config_rejects_rerank_threshold_out_of_range(tmp_path):
+    for bad in ("-0.1", "1.1"):
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "sources: ./docs\n"
+            "persist_directory: ./my_db\n"
+            "chunk_size: 500\n"
+            "chunk_overlap: 100\n"
+            "batch_size: 100\n"
+            "embedding_model: test-embed\n"
+            "llm_model: test-llm\n"
+            "temperature: 0.0\n"
+            "retrieve_k: 5\n"
+            "rerank_enabled: true\n"
+            "rerank_model: rerank-x\n"
+            "rerank_k: 5\n"
+            f"rerank_threshold: {bad}\n"
+            "system_prompt: use this\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="rerank_threshold"):
             raggy.load_config(str(config_file))
 
 
@@ -403,10 +425,10 @@ def test_run_pipeline_returns_response_and_retrieved_docs(monkeypatch):
         "persist_directory": "./persist",
         "hybrid_search": True,
         "hybrid_alpha": 0.5,
-        "relevance_filter": True,
         "rerank_enabled": False,
         "rerank_model": "rerank-x",
         "rerank_k": 2,
+        "rerank_threshold": 0.0,
     }
 
     captured = {}
@@ -450,10 +472,10 @@ def test_run_pipeline_forwards_chat_history(monkeypatch):
         "persist_directory": "./persist",
         "hybrid_search": True,
         "hybrid_alpha": 0.5,
-        "relevance_filter": True,
         "rerank_enabled": False,
         "rerank_model": "rerank-x",
         "rerank_k": 2,
+        "rerank_threshold": 0.0,
     }
     captured = {}
     history = [("human", "hello"), ("ai", "hi")]
@@ -553,10 +575,10 @@ def test_run_pipeline_stream_yields_chunks_and_captures_docs(monkeypatch):
         "persist_directory": "./persist",
         "hybrid_search": True,
         "hybrid_alpha": 0.5,
-        "relevance_filter": True,
         "rerank_enabled": False,
         "rerank_model": "rerank-x",
         "rerank_k": 2,
+        "rerank_threshold": 0.0,
     }
 
     class FakeChain:
@@ -591,10 +613,10 @@ def test_run_pipeline_stream_forwards_chat_history(monkeypatch):
         "persist_directory": "./persist",
         "hybrid_search": True,
         "hybrid_alpha": 0.5,
-        "relevance_filter": True,
         "rerank_enabled": False,
         "rerank_model": "rerank-x",
         "rerank_k": 2,
+        "rerank_threshold": 0.0,
     }
     captured = {}
     history = [("human", "hello"), ("ai", "hi")]
@@ -629,10 +651,10 @@ def test_run_pipeline_propagates_unexpected_error(monkeypatch):
         "persist_directory": "./persist",
         "hybrid_search": True,
         "hybrid_alpha": 0.5,
-        "relevance_filter": True,
         "rerank_enabled": False,
         "rerank_model": "rerank-x",
         "rerank_k": 2,
+        "rerank_threshold": 0.0,
     }
 
     monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)

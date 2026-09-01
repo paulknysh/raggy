@@ -22,8 +22,8 @@ hybrid_alpha: 0.5 # weight of the dense/vector pass (1.0 = vector only, 0.0 = BM
 rerank_enabled: true
 rerank_model: "cross-encoder/ms-marco-MiniLM-L6-v2"
 rerank_k: 5
-# optional LLM-based relevance filtering of final chunks
-relevance_filter: false
+# drop reranked chunks scoring below this relevance (0.0 = disabled)
+rerank_threshold: 0.3
 
 system_prompt: |
   You are a RAG (Retrieval-Augmented Generation) assistant answering a user's
