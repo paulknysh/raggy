@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from raggy import pipeline
 
 
@@ -152,6 +154,40 @@ def test_get_retriever_mmr_always_uses_k_and_fetch_k_with_rerank_k(monkeypatch):
         "model": "encoder:reranker-model",
         "top_n": 3,
     }
+
+
+def test_get_retriever_wraps_hybrid_with_ensemble(monkeypatch):
+    captured = {}
+
+    class FakeVectorstore:
+        def as_retriever(self, **kwargs):
+            captured["base"] = kwargs
+            return "base-retriever"
+
+    class FakeEnsemble:
+        def __init__(self, **kwargs):
+            captured["ensemble"] = kwargs
+
+    monkeypatch.setattr(pipeline, "EnsembleRetriever", FakeEnsemble)
+    monkeypatch.setattr(
+        pipeline, "get_bm25_retriever", lambda *a, **k: "bm25-retriever"
+    )
+
+    pipeline.get_retriever(
+        FakeVectorstore(),
+        search_type="similarity",
+        retrieve_k=5,
+        mmr_fetch_k=25,
+        rerank_model="reranker-model",
+        persist_directory="./persist",
+        hybrid_search=True,
+        hybrid_alpha=0.7,
+    )
+
+    assert captured["base"] == {"search_type": "similarity", "search_kwargs": {"k": 5}}
+    assert captured["ensemble"]["retrievers"] == ["base-retriever", "bm25-retriever"]
+    assert captured["ensemble"]["weights"][0] == pytest.approx(0.7)
+    assert captured["ensemble"]["weights"][1] == pytest.approx(0.3)
 
 
 def test_format_docs_joins_page_content():

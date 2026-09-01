@@ -44,6 +44,7 @@ dependencies = [
     "langchain-openai",
     "langchain-anthropic",
     "langchain-google-genai",
+    "bm25s",
     "pytest",
     "ruff>=0.16.1",
 ]

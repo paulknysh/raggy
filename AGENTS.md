@@ -12,8 +12,9 @@
 
 ## Architecture
 - `raggy/raggy.py` — orchestration: `load_config`, `run_pipeline`, `run_pipeline_stream`, `refresh_db`; caches the vectorstore in a module global.
-- `raggy/pipeline.py` — LCEL chain: retriever → (optional) LLM relevance filter when `relevance_filter: true` (off by default) → `format_and_capture` (appends docs to `doc_sink`) → prompt → LLM.
-- `raggy/vectorstore.py` — Chroma init/ingest/batching + manifest-based rebuild detection (ANY change to sources/chunk_size/chunk_overlap/embedding_model/content_hash ⇒ full wipe+reindex).
+- `raggy/pipeline.py` — LCEL chain: hybrid retriever (dense + optional BM25 when `hybrid_search: true`, fused via `EnsembleRetriever`) → (optional) LLM relevance filter when `relevance_filter: true` (off by default) → `format_and_capture` (appends docs to `doc_sink`) → prompt → LLM.
+- `raggy/vectorstore.py` — Chroma init/ingest/batching + manifest-based rebuild detection (ANY change to sources/chunk_size/chunk_overlap/embedding_model/content_hash ⇒ full wipe+reindex). Also builds a `bm25s` index over the same chunks and persists it to `<persist_directory>/bm25_index` for hybrid retrieval.
+- `raggy/bm25_retriever.py` — `Bm25sRetriever` (a LangChain `BaseRetriever`); loads the persisted `bm25s` index + per-chunk metadata and returns `Document`s for the lexical pass of hybrid retrieval.
 - `raggy/loaders.py` — format loaders; OCR (RapidOCR) for images and textless PDFs; unsupported files ignored not errored.
 - `raggy/reranker.py` — onnxruntime cross-encoder, cached globally (no PyTorch).
 - `raggy/llm_factory.py` — provider-agnostic `get_llm`; dispatches on `llm_provider` to Ollama (local) or OpenAI/Anthropic/Google (API, key from env var).

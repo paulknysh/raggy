@@ -33,6 +33,8 @@ class RaggySettings(BaseModel):
     retrieve_k: int
     mmr_fetch_k: int | None = None
     search_type: Literal["mmr", "similarity"]
+    hybrid_search: bool = False
+    hybrid_alpha: float = 0.5
     relevance_filter: bool = False
     rerank_enabled: bool = False
     rerank_model: str
@@ -79,6 +81,13 @@ class RaggySettings(BaseModel):
     def _temperature_range(cls, value: float) -> float:
         if not 0.0 <= value <= 2.0:
             raise ValueError("must be between 0.0 and 2.0")
+        return value
+
+    @field_validator("hybrid_alpha")
+    @classmethod
+    def _hybrid_alpha_range(cls, value: float) -> float:
+        if not 0.0 <= value <= 1.0:
+            raise ValueError("must be between 0.0 and 1.0")
         return value
 
     @field_validator("rerank_k")

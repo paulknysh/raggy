@@ -146,6 +146,9 @@ def run_pipeline(query: str, chat_history: list | None = None) -> tuple[Any, lis
         rerank_enabled=cfg["rerank_enabled"],
         rerank_model=cfg["rerank_model"],
         rerank_k=cfg["rerank_k"],
+        persist_directory=cfg["persist_directory"],
+        hybrid_search=cfg["hybrid_search"],
+        hybrid_alpha=cfg["hybrid_alpha"],
         doc_sink=doc_sink,
         chat_history=chat_history,
     )
@@ -197,6 +200,9 @@ def run_pipeline_stream(
         rerank_enabled=cfg["rerank_enabled"],
         rerank_model=cfg["rerank_model"],
         rerank_k=cfg["rerank_k"],
+        persist_directory=cfg["persist_directory"],
+        hybrid_search=cfg["hybrid_search"],
+        hybrid_alpha=cfg["hybrid_alpha"],
         doc_sink=collected,
         chat_history=chat_history,
     )

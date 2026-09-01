@@ -106,6 +106,8 @@ working directory when you run the `raggy` CLI or import the library):
 | `search_type` | retriever search type (`similarity` or `mmr`) |
 | `retrieve_k` | number of chunks returned by the first-stage retrieval |
 | `mmr_fetch_k` | number of candidate chunks fetched before MMR reranking (used when `search_type: mmr`) |
+| `hybrid_search` | whether to fuse dense retrieval with a lexical BM25 (`bm25s`) pass via reciprocal rank fusion (off by default) |
+| `hybrid_alpha` | weight of the dense/vector pass in hybrid fusion (`1.0` = vector only, `0.0` = BM25 only, default `0.5`) |
 | `rerank_enabled` | whether to use additional reranking after retrieval stage (on by default) |
 | `rerank_model` | Hugging Face ID of the cross-encoder model (default `onnx-community/bge-reranker-v2-m3-ONNX`) |
 | `rerank_k` | final number of chunks returned by the cross-encoder (must be `<= retrieve_k`) |
@@ -132,8 +134,8 @@ It computes basic retrieval/generation metrics and produces a summary (both prin
 
 ## The DB management
 
-The Chroma DB lives in the directory configured by `persist_directory`
-(default `./chroma_db`). It is (re-)indexed automatically on each run as needed.
+The DB lives in the directory configured by `persist_directory`
+(default `./db`), which holds both Chroma vector store and BM25 index.
 
 ### How the DB is created
 
@@ -146,6 +148,10 @@ directory recording these parameters:
 - `chunk_overlap`
 - `embedding_model`
 - `content_hash` — a SHA-256 fingerprint of the source files
+
+The same chunks are also indexed with `bm25s` (a lexical BM25 index), stored in
+`<persist_directory>/bm25_index/`, so `hybrid_search` can run without re-indexing
+at retrieval time.
 
 ### How/when the DB is re-indexed
 
@@ -172,7 +178,7 @@ Any changes to its content, including changes to `content_hash` will cause DB to
 - [x] Support of popular LLM providers via API keys
 - [x] Conversation memory in chat mode
 - [x] Pydantic validation of config file
-- [ ] Hybrid retrieval, tuning config defaults
+- [x] Hybrid retrieval, tuning config defaults
 - [ ] UX/UI tuning of CLI (improved commands/statuses etc)
 - [ ] Performance optimizations
 

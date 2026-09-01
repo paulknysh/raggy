@@ -1,5 +1,8 @@
 from langchain_chroma import Chroma
-from langchain_classic.retrievers import ContextualCompressionRetriever
+from langchain_classic.retrievers import (
+    ContextualCompressionRetriever,
+    EnsembleRetriever,
+)
 from langchain_classic.retrievers.document_compressors.cross_encoder_rerank import (
     CrossEncoderReranker,
 )
@@ -8,6 +11,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrough
 
+from .bm25_retriever import get_bm25_retriever
 from .llm_factory import get_llm
 from .llm_filter import filter_docs_by_relevance
 from .reranker import get_cross_encoder
@@ -67,6 +71,9 @@ def get_retriever(
     mmr_fetch_k: int | None = None,
     rerank_enabled: bool = False,
     rerank_k: int | None = None,
+    persist_directory: str | None = None,
+    hybrid_search: bool = False,
+    hybrid_alpha: float = 0.5,
 ):
     """Configures and returns the retriever.
 
@@ -76,7 +83,10 @@ def get_retriever(
          ``search_type: "mmr"`` this is an MMR pass that returns ``retrieve_k``
          chunks while considering ``mmr_fetch_k`` candidates. ``retrieve_k``
          and ``mmr_fetch_k`` always apply to this stage, whether or not
-         re-ranking is enabled.
+         re-ranking is enabled. When ``hybrid_search`` is set, the vector
+         retriever is fused with a lexical ``bm25s`` retriever (loaded from
+         the persisted index) via reciprocal rank fusion, weighting the dense
+         pass by ``hybrid_alpha``.
       2. Second stage (optional): a cross-encoder scores each
          (query, chunk) pair and keeps the top ``rerank_k`` chunks.
          ``rerank_k`` defaults to ``retrieve_k`` and must not exceed it.
@@ -87,6 +97,13 @@ def get_retriever(
     retriever = vectorstore.as_retriever(
         search_type=search_type, search_kwargs=search_kwargs
     )
+
+    if hybrid_search:
+        bm25_retriever = get_bm25_retriever(persist_directory, k=retrieve_k)
+        retriever = EnsembleRetriever(
+            retrievers=[retriever, bm25_retriever],
+            weights=[hybrid_alpha, 1.0 - hybrid_alpha],
+        )
 
     if rerank_enabled:
         final_k = rerank_k if rerank_k is not None else retrieve_k
@@ -134,6 +151,9 @@ def build_rag_chain(
     relevance_filter: bool = False,
     rerank_enabled: bool = False,
     rerank_k: int | None = None,
+    persist_directory: str | None = None,
+    hybrid_search: bool = False,
+    hybrid_alpha: float = 0.5,
     doc_sink: list | None = None,
     chat_history: list | None = None,
 ) -> tuple[Runnable, Runnable]:
@@ -161,6 +181,9 @@ def build_rag_chain(
         rerank_enabled=rerank_enabled,
         rerank_model=rerank_model,
         rerank_k=rerank_k,
+        persist_directory=persist_directory,
+        hybrid_search=hybrid_search,
+        hybrid_alpha=hybrid_alpha,
     )
     llm = get_llm(llm_provider, llm_model, temperature=temperature)
     prompt = get_prompt_template(system_prompt, with_history=chat_history is not None)

@@ -27,6 +27,6 @@ env/
 .DS_Store
 
 # Local user/application data
-chroma_db/
+db/
 eval/results.json
 config.yaml

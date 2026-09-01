@@ -1,10 +1,12 @@
 import hashlib
+import json
 import logging
 import math
 import shutil
 import sys
 from pathlib import Path
 
+import bm25s
 import yaml
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
@@ -12,6 +14,7 @@ from langchain_ollama import OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from tqdm import tqdm
 
+from .bm25_retriever import BM25_INDEX_DIRNAME, METADATA_FILENAME
 from .loaders import SUPPORTED_EXTENSIONS, load_documents_from_sources
 
 logger = logging.getLogger(__name__)
@@ -85,12 +88,31 @@ def close_vectorstore(vectorstore: Chroma) -> None:
         close()
 
 
+def _save_bm25_index(splits: list[Document], persist_directory: str) -> None:
+    """Build and persist a ``bm25s`` index (plus chunk metadata) to disk.
+
+    The index is written to ``<persist_directory>/bm25_index`` at DB build
+    time so the retrieval step can load it later without re-indexing. Corpus
+    entries are aligned by index with the per-chunk metadata so the
+    ``Bm25sRetriever`` can reconstruct the original ``Document``s.
+    """
+    corpus = [split.page_content for split in splits]
+    bm25 = bm25s.BM25()
+    bm25.index(bm25s.tokenize(corpus, show_progress=False))
+    index_dir = Path(persist_directory) / BM25_INDEX_DIRNAME
+    index_dir.mkdir(parents=True, exist_ok=True)
+    bm25.save(str(index_dir), corpus=corpus, show_progress=False)
+    metadata = [dict(split.metadata) for split in splits]
+    (index_dir / METADATA_FILENAME).write_text(json.dumps(metadata), encoding="utf-8")
+
+
 def ingest_document(
     sources: list[str],
     vectorstore: Chroma,  # Assuming Chroma is imported in your actual file
     chunk_size: int,
     chunk_overlap: int,
     batch_size: int,
+    persist_directory: str,
 ) -> None:
     """Loads, splits, and embeds documents into the vector store in batches.
 
@@ -101,6 +123,9 @@ def ingest_document(
     Chunks are grouped into batches of up to ``batch_size`` chunks. The number
     of batches is derived dynamically from the total chunk count, so the setting
     stays sensible regardless of dataset size.
+
+    Also builds a BM25 index over the same chunks and persists it to
+    ``<persist_directory>/bm25_index/`` for hybrid retrieval.
     """
     docs = load_documents_from_sources(sources)
 
@@ -139,6 +164,7 @@ def ingest_document(
         batch_size,
     )
 
+    all_splits = list(splits)
     for size in tqdm(
         batch_sizes,
         total=n_batches,
@@ -148,6 +174,8 @@ def ingest_document(
         batch = splits[:size]
         splits = splits[size:]
         vectorstore.add_documents(batch)
+
+    _save_bm25_index(all_splits, persist_directory)
 
 
 _HASH_BLOCK_SIZE = 1048576
@@ -307,6 +335,7 @@ def initialize_db(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             batch_size=batch_size,
+            persist_directory=persist_directory,
         )
         _write_manifest(persist_directory, index_cfg)
         logger.info(

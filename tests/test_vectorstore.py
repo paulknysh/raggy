@@ -129,6 +129,23 @@ def test_initialize_db_skips_ingest_when_data_exists(monkeypatch, tmp_path):
     assert calls["ingest"] == 0
 
 
+def test_save_bm25_index_persists_expected_files(tmp_path):
+    from langchain_core.documents import Document
+
+    from raggy.bm25_retriever import BM25_INDEX_DIRNAME, METADATA_FILENAME
+
+    splits = [
+        Document(page_content="chunk one", metadata={"source": "a.txt", "page": 1}),
+        Document(page_content="chunk two", metadata={"source": "b.txt", "page": 2}),
+    ]
+    vectorstore._save_bm25_index(splits, str(tmp_path))
+
+    index_dir = tmp_path / BM25_INDEX_DIRNAME
+    assert index_dir.is_dir()
+    assert (index_dir / METADATA_FILENAME).exists()
+    assert (index_dir / "data.csc.index.npy").exists()
+
+
 def test_initialize_db_rebuilds_when_manifest_differs(tmp_path, monkeypatch):
     calls = {"ingest": 0}
     source_file = tmp_path / "doc.txt"

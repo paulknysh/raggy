@@ -2,7 +2,7 @@
 sources:
   - "./sample_docs"
 
-persist_directory: "./chroma_db"
+persist_directory: "./db"
 embedding_model: "nomic-embed-text"
 chunk_size: 500
 chunk_overlap: 100
@@ -17,6 +17,9 @@ temperature: 0.0
 search_type: "similarity"
 retrieve_k: 25
 # mmr_fetch_k: 25 # for search_type: "mmr"
+# hybrid retrieval (dense + BM25 lexical, fused via reciprocal rank fusion)
+hybrid_search: false
+hybrid_alpha: 0.5 # weight of the dense/vector pass (1.0 = vector only, 0.0 = BM25 only)
 # optional cross-encoder re-ranking
 rerank_enabled: true
 rerank_model: "onnx-community/bge-reranker-v2-m3-ONNX"

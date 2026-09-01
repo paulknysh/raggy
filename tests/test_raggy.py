@@ -49,6 +49,8 @@ def test_load_config_reads_all_values(tmp_path):
         "retrieve_k": 11,
         "mmr_fetch_k": 22,
         "search_type": "similarity",
+        "hybrid_search": False,
+        "hybrid_alpha": 0.5,
         "relevance_filter": True,
         "rerank_enabled": True,
         "rerank_model": "rerank-x",
@@ -188,6 +190,55 @@ def test_load_config_rejects_rerank_k_greater_than_k(tmp_path):
 
     with pytest.raises(ValueError, match="rerank_k"):
         raggy.load_config(str(config_file))
+
+
+def test_load_config_hybrid_search_defaults_false_and_alpha_half(tmp_path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "sources: ./docs\n"
+        "persist_directory: ./my_db\n"
+        "chunk_size: 500\n"
+        "chunk_overlap: 100\n"
+        "batch_size: 100\n"
+        "embedding_model: test-embed\n"
+        "llm_model: test-llm\n"
+        "temperature: 0.0\n"
+        "retrieve_k: 5\n"
+        "search_type: similarity\n"
+        "rerank_enabled: false\n"
+        "rerank_model: rerank-x\n"
+        "system_prompt: use this\n",
+        encoding="utf-8",
+    )
+
+    cfg = raggy.load_config(str(config_file))
+
+    assert cfg["hybrid_search"] is False
+    assert cfg["hybrid_alpha"] == 0.5
+
+
+def test_load_config_rejects_hybrid_alpha_out_of_range(tmp_path):
+    for bad in ("-0.1", "1.1"):
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "sources: ./docs\n"
+            "persist_directory: ./my_db\n"
+            "chunk_size: 500\n"
+            "chunk_overlap: 100\n"
+            "batch_size: 100\n"
+            "embedding_model: test-embed\n"
+            "llm_model: test-llm\n"
+            "temperature: 0.0\n"
+            "retrieve_k: 5\n"
+            "search_type: similarity\n"
+            f"hybrid_alpha: {bad}\n"
+            "rerank_enabled: false\n"
+            "rerank_model: rerank-x\n"
+            "system_prompt: use this\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="hybrid_alpha"):
+            raggy.load_config(str(config_file))
 
 
 def test_load_config_accepts_single_string_source(tmp_path):
@@ -472,6 +523,9 @@ def test_run_pipeline_returns_response_and_retrieved_docs(monkeypatch):
         "retrieve_k": 2,
         "mmr_fetch_k": 10,
         "temperature": 0.0,
+        "persist_directory": "./persist",
+        "hybrid_search": False,
+        "hybrid_alpha": 0.5,
         "relevance_filter": True,
         "rerank_enabled": False,
         "rerank_model": "rerank-x",
@@ -518,6 +572,9 @@ def test_run_pipeline_forwards_chat_history(monkeypatch):
         "retrieve_k": 2,
         "mmr_fetch_k": 10,
         "temperature": 0.0,
+        "persist_directory": "./persist",
+        "hybrid_search": False,
+        "hybrid_alpha": 0.5,
         "relevance_filter": True,
         "rerank_enabled": False,
         "rerank_model": "rerank-x",
@@ -620,6 +677,9 @@ def test_run_pipeline_stream_yields_chunks_and_captures_docs(monkeypatch):
         "retrieve_k": 2,
         "mmr_fetch_k": 10,
         "temperature": 0.0,
+        "persist_directory": "./persist",
+        "hybrid_search": False,
+        "hybrid_alpha": 0.5,
         "relevance_filter": True,
         "rerank_enabled": False,
         "rerank_model": "rerank-x",
@@ -657,6 +717,9 @@ def test_run_pipeline_stream_forwards_chat_history(monkeypatch):
         "retrieve_k": 2,
         "mmr_fetch_k": 10,
         "temperature": 0.0,
+        "persist_directory": "./persist",
+        "hybrid_search": False,
+        "hybrid_alpha": 0.5,
         "relevance_filter": True,
         "rerank_enabled": False,
         "rerank_model": "rerank-x",
@@ -694,6 +757,9 @@ def test_run_pipeline_propagates_unexpected_error(monkeypatch):
         "retrieve_k": 2,
         "mmr_fetch_k": 10,
         "temperature": 0.0,
+        "persist_directory": "./persist",
+        "hybrid_search": False,
+        "hybrid_alpha": 0.5,
         "relevance_filter": True,
         "rerank_enabled": False,
         "rerank_model": "rerank-x",
