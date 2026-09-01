@@ -49,7 +49,7 @@ def test_load_config_reads_all_values(tmp_path):
         "rerank_enabled": True,
         "rerank_model": "rerank-x",
         "rerank_k": 4,
-        "rerank_threshold": 0.0,
+        "rerank_threshold": 0.3,
         "system_prompt": "use this",
     }
 

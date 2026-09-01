@@ -12,7 +12,6 @@ from rich.panel import Panel
 from rich.table import Table
 
 from .raggy import load_config, refresh_db, run_pipeline_stream, source_label
-from .vectorstore import build_index_config, db_needs_rebuild
 
 logger = logging.getLogger(__name__)
 
@@ -128,20 +127,7 @@ def run_chat() -> None:
 
         try:
             cfg = load_config()
-            index_cfg = build_index_config(
-                sources=cfg["sources"],
-                chunk_size=cfg["chunk_size"],
-                chunk_overlap=cfg["chunk_overlap"],
-                embedding_model=cfg["embedding_model"],
-            )
-            needs_rebuild = db_needs_rebuild(cfg["persist_directory"], index_cfg)
-            if needs_rebuild:
-                with console.status(
-                    f"[{STATUS_ACCENT}]DB needs (re-)indexing...[/{STATUS_ACCENT}]"
-                ):
-                    rebuilt = refresh_db()
-            else:
-                rebuilt = refresh_db()
+            rebuilt = refresh_db(cfg)
             doc_sink: list = []
             with console.status(f"[{STATUS_ACCENT}]Retrieving...[/{STATUS_ACCENT}]"):
                 stream = run_pipeline_stream(

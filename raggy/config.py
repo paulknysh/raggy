@@ -33,10 +33,10 @@ class RaggySettings(BaseModel):
     retrieve_k: int
     hybrid_search: bool = True
     hybrid_alpha: float = 0.5
-    rerank_enabled: bool = False
+    rerank_enabled: bool = True
     rerank_model: str
     rerank_k: int | None = None
-    rerank_threshold: float = 0.0
+    rerank_threshold: float = 0.3
     system_prompt: str
 
     @field_validator("sources", mode="before")

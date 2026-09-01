@@ -8,11 +8,11 @@
 
 ## Runtime prerequisites (not mocked in tests)
 - `config.yaml` must exist in the working directory (single source of truth, validated in `raggy/raggy.py:load_config`).
-- Ollama service running with the embedding model named in `config.yaml` (`nomic-embed-text`) — always required because embeddings are local. The generation LLM is local (`llama3.2`) when `llm_provider: ollama`, or a remote API when `llm_provider: openai|anthropic|google`. Tests mock all Ollama/Chroma/provider I/O — never require a live service in tests.
+- Ollama service running with the embedding model named in `config.yaml` (`nomic-embed-text`) — always required because embeddings are local. The generation LLM is local (`phi4-mini`) when `llm_provider: ollama`, or a remote API when `llm_provider: openai|anthropic|google`. Tests mock all Ollama/Chroma/provider I/O — never require a live service in tests.
 
 ## Architecture
 - `raggy/raggy.py` — orchestration: `load_config`, `run_pipeline`, `run_pipeline_stream`, `refresh_db`; caches the vectorstore in a module global.
-- `raggy/pipeline.py` — LCEL chain: hybrid retriever (dense + optional BM25 when `hybrid_search: true`, fused via `EnsembleRetriever`) → (optional) reranker score-threshold filter → `format_and_capture` (appends docs to `doc_sink`) → prompt → LLM.
+- `raggy/pipeline.py` — LCEL chain: hybrid retriever (dense + optional BM25 when `hybrid_search: true`, fused via `EnsembleRetriever`) → (optional) cross-encoder reranker → score-threshold filter (drops chunks below `rerank_threshold`, no-op when reranking is off) → `format_and_capture` (appends docs to `doc_sink`) → prompt → LLM.
 - `raggy/vectorstore.py` — Chroma init/ingest/batching + manifest-based rebuild detection (ANY change to sources/chunk_size/chunk_overlap/embedding_model/content_hash ⇒ full wipe+reindex). Also builds a `bm25s` index over the same chunks and persists it to `<persist_directory>/bm25_index` for hybrid retrieval.
 - `raggy/bm25_retriever.py` — `Bm25sRetriever` (a LangChain `BaseRetriever`); loads the persisted `bm25s` index + per-chunk metadata and returns `Document`s for the lexical pass of hybrid retrieval.
 - `raggy/loaders.py` — format loaders; OCR (RapidOCR) for images and textless PDFs; unsupported files ignored not errored.

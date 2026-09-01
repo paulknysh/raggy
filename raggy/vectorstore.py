@@ -39,6 +39,8 @@ def annotate_line_numbers(splits: list[Document], content: str) -> None:
         if start == -1:
             start = content.find(text)
 
+        if start == -1:
+            continue
         split.metadata["start_line"] = content.count("\n", 0, start) + 1
         if text.endswith("\n"):
             newlines_in_text = text.count("\n") - 1

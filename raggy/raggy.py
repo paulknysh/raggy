@@ -85,16 +85,20 @@ def _get_vectorstore() -> Chroma:
     return _vectorstore
 
 
-def refresh_db() -> bool:
+def refresh_db(cfg: dict[str, Any] | None = None) -> bool:
     """Re-check the source docs and rebuild the vector DB if they changed.
 
     ``_get_vectorstore`` caches the initialized store for the life of the
     process, so interactive sessions (like the CLI) would otherwise silently
     keep using a stale DB. Call this before each query; it returns True if the
     DB was rebuilt.
+
+    Pass a pre-loaded ``cfg`` dict to avoid re-reading ``config.yaml``
+    (and re-hashing source files) when the caller already has it.
     """
     global _vectorstore
-    cfg = load_config()
+    if cfg is None:
+        cfg = load_config()
     index_cfg = build_index_config(
         sources=cfg["sources"],
         chunk_size=cfg["chunk_size"],
