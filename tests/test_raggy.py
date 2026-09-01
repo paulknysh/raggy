@@ -24,8 +24,6 @@ def test_load_config_reads_all_values(tmp_path):
         "llm_model: test-llm\n"
         "temperature: 0.4\n"
         "retrieve_k: 11\n"
-        "mmr_fetch_k: 22\n"
-        "search_type: similarity\n"
         "relevance_filter: true\n"
         "rerank_enabled: true\n"
         "rerank_model: rerank-x\n"
@@ -47,9 +45,7 @@ def test_load_config_reads_all_values(tmp_path):
         "llm_model": "test-llm",
         "temperature": 0.4,
         "retrieve_k": 11,
-        "mmr_fetch_k": 22,
-        "search_type": "similarity",
-        "hybrid_search": False,
+        "hybrid_search": True,
         "hybrid_alpha": 0.5,
         "relevance_filter": True,
         "rerank_enabled": True,
@@ -72,8 +68,6 @@ def test_load_config_llm_provider_defaults_to_ollama(tmp_path):
         "llm_model: test-llm\n"
         "temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "mmr_fetch_k: 25\n"
-        "search_type: mmr\n"
         "rerank_enabled: false\n"
         "rerank_model: rerank-x\n"
         "system_prompt: use this\n",
@@ -99,8 +93,6 @@ def test_load_config_reads_relevance_filter_false(tmp_path):
         "llm_model: test-llm\n"
         "temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "mmr_fetch_k: 25\n"
-        "search_type: mmr\n"
         "relevance_filter: false\n"
         "rerank_enabled: false\n"
         "rerank_model: rerank-x\n"
@@ -127,8 +119,6 @@ def test_load_config_reads_llm_provider(tmp_path):
         "llm_model: test-llm\n"
         "temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "mmr_fetch_k: 25\n"
-        "search_type: mmr\n"
         "rerank_enabled: false\n"
         "rerank_model: rerank-x\n"
         "system_prompt: use this\n",
@@ -153,8 +143,6 @@ def test_load_config_rerank_k_defaults_to_retrieve_k(tmp_path):
         "llm_model: test-llm\n"
         "temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "mmr_fetch_k: 25\n"
-        "search_type: mmr\n"
         "rerank_enabled: false\n"
         "rerank_model: rerank-x\n"
         "system_prompt: use this\n",
@@ -179,8 +167,6 @@ def test_load_config_rejects_rerank_k_greater_than_k(tmp_path):
         "llm_model: test-llm\n"
         "temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "mmr_fetch_k: 25\n"
-        "search_type: mmr\n"
         "rerank_enabled: true\n"
         "rerank_model: rerank-x\n"
         "rerank_k: 6\n"
@@ -192,7 +178,7 @@ def test_load_config_rejects_rerank_k_greater_than_k(tmp_path):
         raggy.load_config(str(config_file))
 
 
-def test_load_config_hybrid_search_defaults_false_and_alpha_half(tmp_path):
+def test_load_config_hybrid_search_defaults_true_and_alpha_half(tmp_path):
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
         "sources: ./docs\n"
@@ -204,7 +190,6 @@ def test_load_config_hybrid_search_defaults_false_and_alpha_half(tmp_path):
         "llm_model: test-llm\n"
         "temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "search_type: similarity\n"
         "rerank_enabled: false\n"
         "rerank_model: rerank-x\n"
         "system_prompt: use this\n",
@@ -213,7 +198,7 @@ def test_load_config_hybrid_search_defaults_false_and_alpha_half(tmp_path):
 
     cfg = raggy.load_config(str(config_file))
 
-    assert cfg["hybrid_search"] is False
+    assert cfg["hybrid_search"] is True
     assert cfg["hybrid_alpha"] == 0.5
 
 
@@ -230,7 +215,6 @@ def test_load_config_rejects_hybrid_alpha_out_of_range(tmp_path):
             "llm_model: test-llm\n"
             "temperature: 0.0\n"
             "retrieve_k: 5\n"
-            "search_type: similarity\n"
             f"hybrid_alpha: {bad}\n"
             "rerank_enabled: false\n"
             "rerank_model: rerank-x\n"
@@ -253,8 +237,6 @@ def test_load_config_accepts_single_string_source(tmp_path):
         "llm_model: test-llm\n"
         "temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "mmr_fetch_k: 25\n"
-        "search_type: mmr\n"
         "rerank_enabled: false\n"
         "rerank_model: rerank-x\n"
         "system_prompt: use this\n",
@@ -278,8 +260,6 @@ def test_load_config_rejects_empty_sources(tmp_path):
         "llm_model: test-llm\n"
         "temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "mmr_fetch_k: 25\n"
-        "search_type: mmr\n"
         "rerank_enabled: false\n"
         "rerank_model: rerank-x\n"
         "system_prompt: use this\n",
@@ -303,83 +283,12 @@ def test_load_config_rejects_unknown_llm_provider(tmp_path):
         "llm_model: test-llm\n"
         "temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "mmr_fetch_k: 25\n"
-        "search_type: mmr\n"
         "rerank_enabled: false\n"
         "system_prompt: use this\n",
         encoding="utf-8",
     )
 
     with pytest.raises(ValueError, match="llm_provider"):
-        raggy.load_config(str(config_file))
-
-
-def test_load_config_rejects_unknown_search_type(tmp_path):
-    config_file = tmp_path / "config.yaml"
-    config_file.write_text(
-        "sources: ./docs\n"
-        "persist_directory: ./my_db\n"
-        "chunk_size: 500\n"
-        "chunk_overlap: 100\n"
-        "batch_size: 100\n"
-        "embedding_model: test-embed\n"
-        "llm_model: test-llm\n"
-        "temperature: 0.0\n"
-        "retrieve_k: 5\n"
-        "search_type: bogus\n"
-        "rerank_enabled: false\n"
-        "system_prompt: use this\n",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match="search_type"):
-        raggy.load_config(str(config_file))
-
-
-def test_load_config_similarity_without_mmr_fetch_k(tmp_path):
-    config_file = tmp_path / "config.yaml"
-    config_file.write_text(
-        "sources: ./docs\n"
-        "persist_directory: ./my_db\n"
-        "chunk_size: 500\n"
-        "chunk_overlap: 100\n"
-        "batch_size: 100\n"
-        "embedding_model: test-embed\n"
-        "llm_model: test-llm\n"
-        "temperature: 0.0\n"
-        "retrieve_k: 5\n"
-        "search_type: similarity\n"
-        "rerank_enabled: false\n"
-        "rerank_model: rerank-x\n"
-        "system_prompt: use this\n",
-        encoding="utf-8",
-    )
-
-    cfg = raggy.load_config(str(config_file))
-    assert cfg["mmr_fetch_k"] is None
-    assert cfg["search_type"] == "similarity"
-
-
-def test_load_config_requires_mmr_fetch_k_for_mmr(tmp_path):
-    config_file = tmp_path / "config.yaml"
-    config_file.write_text(
-        "sources: ./docs\n"
-        "persist_directory: ./my_db\n"
-        "chunk_size: 500\n"
-        "chunk_overlap: 100\n"
-        "batch_size: 100\n"
-        "embedding_model: test-embed\n"
-        "llm_model: test-llm\n"
-        "temperature: 0.0\n"
-        "retrieve_k: 5\n"
-        "search_type: mmr\n"
-        "rerank_enabled: false\n"
-        "rerank_model: rerank-x\n"
-        "system_prompt: use this\n",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match="mmr_fetch_k is required"):
         raggy.load_config(str(config_file))
 
 
@@ -395,8 +304,6 @@ def test_load_config_rejects_non_positive_chunk_size(tmp_path):
         "llm_model: test-llm\n"
         "temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "mmr_fetch_k: 25\n"
-        "search_type: mmr\n"
         "rerank_enabled: false\n"
         "system_prompt: use this\n",
         encoding="utf-8",
@@ -418,38 +325,12 @@ def test_load_config_rejects_negative_temperature(tmp_path):
         "llm_model: test-llm\n"
         "temperature: -0.1\n"
         "retrieve_k: 5\n"
-        "mmr_fetch_k: 25\n"
-        "search_type: mmr\n"
         "rerank_enabled: false\n"
         "system_prompt: use this\n",
         encoding="utf-8",
     )
 
     with pytest.raises(ValueError, match="temperature"):
-        raggy.load_config(str(config_file))
-
-
-def test_load_config_rejects_mmr_fetch_k_less_than_retrieve_k(tmp_path):
-    config_file = tmp_path / "config.yaml"
-    config_file.write_text(
-        "sources: ./docs\n"
-        "persist_directory: ./my_db\n"
-        "chunk_size: 500\n"
-        "chunk_overlap: 100\n"
-        "batch_size: 100\n"
-        "embedding_model: test-embed\n"
-        "llm_model: test-llm\n"
-        "temperature: 0.0\n"
-        "retrieve_k: 5\n"
-        "mmr_fetch_k: 3\n"
-        "search_type: mmr\n"
-        "rerank_enabled: false\n"
-        "rerank_model: rerank-x\n"
-        "system_prompt: use this\n",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match="mmr_fetch_k"):
         raggy.load_config(str(config_file))
 
 
@@ -465,8 +346,6 @@ def test_load_config_coerces_numeric_strings(tmp_path):
         "llm_model: test-llm\n"
         "temperature: '0.4'\n"
         "retrieve_k: '5'\n"
-        "mmr_fetch_k: '25'\n"
-        "search_type: mmr\n"
         "rerank_enabled: false\n"
         "rerank_model: rerank-x\n"
         "system_prompt: use this\n",
@@ -519,12 +398,10 @@ def test_run_pipeline_returns_response_and_retrieved_docs(monkeypatch):
         "llm_model": "llm-x",
         "llm_provider": "ollama",
         "system_prompt": "sys",
-        "search_type": "mmr",
         "retrieve_k": 2,
-        "mmr_fetch_k": 10,
         "temperature": 0.0,
         "persist_directory": "./persist",
-        "hybrid_search": False,
+        "hybrid_search": True,
         "hybrid_alpha": 0.5,
         "relevance_filter": True,
         "rerank_enabled": False,
@@ -568,12 +445,10 @@ def test_run_pipeline_forwards_chat_history(monkeypatch):
         "llm_model": "llm-x",
         "llm_provider": "ollama",
         "system_prompt": "sys",
-        "search_type": "mmr",
         "retrieve_k": 2,
-        "mmr_fetch_k": 10,
         "temperature": 0.0,
         "persist_directory": "./persist",
-        "hybrid_search": False,
+        "hybrid_search": True,
         "hybrid_alpha": 0.5,
         "relevance_filter": True,
         "rerank_enabled": False,
@@ -673,12 +548,10 @@ def test_run_pipeline_stream_yields_chunks_and_captures_docs(monkeypatch):
         "llm_model": "llm-x",
         "llm_provider": "ollama",
         "system_prompt": "sys",
-        "search_type": "mmr",
         "retrieve_k": 2,
-        "mmr_fetch_k": 10,
         "temperature": 0.0,
         "persist_directory": "./persist",
-        "hybrid_search": False,
+        "hybrid_search": True,
         "hybrid_alpha": 0.5,
         "relevance_filter": True,
         "rerank_enabled": False,
@@ -713,12 +586,10 @@ def test_run_pipeline_stream_forwards_chat_history(monkeypatch):
         "llm_model": "llm-x",
         "llm_provider": "ollama",
         "system_prompt": "sys",
-        "search_type": "mmr",
         "retrieve_k": 2,
-        "mmr_fetch_k": 10,
         "temperature": 0.0,
         "persist_directory": "./persist",
-        "hybrid_search": False,
+        "hybrid_search": True,
         "hybrid_alpha": 0.5,
         "relevance_filter": True,
         "rerank_enabled": False,
@@ -753,12 +624,10 @@ def test_run_pipeline_propagates_unexpected_error(monkeypatch):
         "llm_model": "llm-x",
         "llm_provider": "ollama",
         "system_prompt": "sys",
-        "search_type": "mmr",
         "retrieve_k": 2,
-        "mmr_fetch_k": 10,
         "temperature": 0.0,
         "persist_directory": "./persist",
-        "hybrid_search": False,
+        "hybrid_search": True,
         "hybrid_alpha": 0.5,
         "relevance_filter": True,
         "rerank_enabled": False,

@@ -65,37 +65,30 @@ def condense_question(chat_history: list[tuple[str, str]], question: str, llm) -
 
 def get_retriever(
     vectorstore: Chroma,
-    search_type: str,
     retrieve_k: int,
     rerank_model: str,
-    mmr_fetch_k: int | None = None,
     rerank_enabled: bool = False,
     rerank_k: int | None = None,
     persist_directory: str | None = None,
-    hybrid_search: bool = False,
+    hybrid_search: bool = True,
     hybrid_alpha: float = 0.5,
 ):
     """Configures and returns the retriever.
 
     The pipeline is two-stage:
 
-      1. First stage (always): vector retrieval over the whole corpus. With
-         ``search_type: "mmr"`` this is an MMR pass that returns ``retrieve_k``
-         chunks while considering ``mmr_fetch_k`` candidates. ``retrieve_k``
-         and ``mmr_fetch_k`` always apply to this stage, whether or not
-         re-ranking is enabled. When ``hybrid_search`` is set, the vector
-         retriever is fused with a lexical ``bm25s`` retriever (loaded from
-         the persisted index) via reciprocal rank fusion, weighting the dense
-         pass by ``hybrid_alpha``.
+      1. First stage (always): similarity retrieval over the whole corpus,
+         returning ``retrieve_k`` chunks. When ``hybrid_search`` is set,
+         the vector retriever is fused with a lexical ``bm25s`` retriever
+         (loaded from the persisted index) via reciprocal rank fusion,
+         weighting the dense pass by ``hybrid_alpha``.
       2. Second stage (optional): a cross-encoder scores each
          (query, chunk) pair and keeps the top ``rerank_k`` chunks.
          ``rerank_k`` defaults to ``retrieve_k`` and must not exceed it.
     """
     search_kwargs: dict = {"k": retrieve_k}
-    if search_type == "mmr":
-        search_kwargs["fetch_k"] = mmr_fetch_k
     retriever = vectorstore.as_retriever(
-        search_type=search_type, search_kwargs=search_kwargs
+        search_type="similarity", search_kwargs=search_kwargs
     )
 
     if hybrid_search:
@@ -143,16 +136,14 @@ def build_rag_chain(
     llm_model: str,
     llm_provider: str,
     system_prompt: str,
-    search_type: str,
     retrieve_k: int,
     temperature: float,
     rerank_model: str,
-    mmr_fetch_k: int | None = None,
     relevance_filter: bool = False,
     rerank_enabled: bool = False,
     rerank_k: int | None = None,
     persist_directory: str | None = None,
-    hybrid_search: bool = False,
+    hybrid_search: bool = True,
     hybrid_alpha: float = 0.5,
     doc_sink: list | None = None,
     chat_history: list | None = None,
@@ -175,9 +166,7 @@ def build_rag_chain(
     """
     retriever = get_retriever(
         vectorstore,
-        search_type=search_type,
         retrieve_k=retrieve_k,
-        mmr_fetch_k=mmr_fetch_k,
         rerank_enabled=rerank_enabled,
         rerank_model=rerank_model,
         rerank_k=rerank_k,

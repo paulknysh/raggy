@@ -103,10 +103,8 @@ working directory when you run the `raggy` CLI or import the library):
 | `llm_provider` | where generation runs: `ollama` (local, default) or `openai`/`anthropic`/`google` (via API) |
 | `llm_model` | chat model for generation (e.g. `phi4-mini` locally, or a remote model name like `gemini-3.5-flash`) |
 | `temperature` | LLM sampling temperature |
-| `search_type` | retriever search type (`similarity` or `mmr`) |
 | `retrieve_k` | number of chunks returned by the first-stage retrieval |
-| `mmr_fetch_k` | number of candidate chunks fetched before MMR reranking (used when `search_type: mmr`) |
-| `hybrid_search` | whether to fuse dense retrieval with a lexical BM25 (`bm25s`) pass via reciprocal rank fusion (off by default) |
+| `hybrid_search` | whether to fuse dense retrieval with a lexical BM25 (`bm25s`) pass via reciprocal rank fusion (on by default) |
 | `hybrid_alpha` | weight of the dense/vector pass in hybrid fusion (`1.0` = vector only, `0.0` = BM25 only, default `0.5`) |
 | `rerank_enabled` | whether to use additional reranking after retrieval stage (on by default) |
 | `rerank_model` | Hugging Face ID of the cross-encoder model (default `onnx-community/bge-reranker-v2-m3-ONNX`) |

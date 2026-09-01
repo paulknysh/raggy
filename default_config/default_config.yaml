@@ -14,11 +14,9 @@ llm_model: "phi4-mini"
 temperature: 0.0
 
 # RAG Pipeline Configuration
-search_type: "similarity"
 retrieve_k: 25
-# mmr_fetch_k: 25 # for search_type: "mmr"
 # hybrid retrieval (dense + BM25 lexical, fused via reciprocal rank fusion)
-hybrid_search: false
+hybrid_search: true
 hybrid_alpha: 0.5 # weight of the dense/vector pass (1.0 = vector only, 0.0 = BM25 only)
 # optional cross-encoder re-ranking
 rerank_enabled: true

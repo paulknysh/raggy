@@ -60,10 +60,9 @@ def test_get_retriever_uses_vectorstore_configuration():
 
     result = pipeline.get_retriever(
         FakeVectorstore(),
-        search_type="similarity",
         retrieve_k=8,
-        mmr_fetch_k=10,
         rerank_model="test-reranker",
+        hybrid_search=False,
     )
 
     assert result == "retriever"
@@ -94,11 +93,10 @@ def test_get_retriever_wraps_cross_encoder_when_rerank_enabled(monkeypatch):
 
     result = pipeline.get_retriever(
         FakeVectorstore(),
-        search_type="similarity",
         retrieve_k=5,
-        mmr_fetch_k=25,
         rerank_enabled=True,
         rerank_model="reranker-model",
+        hybrid_search=False,
     )
 
     assert result == "compressed-retriever"
@@ -110,49 +108,6 @@ def test_get_retriever_wraps_cross_encoder_when_rerank_enabled(monkeypatch):
     assert captured["compression"] == {
         "base_compressor": "compressor",
         "base_retriever": "base-retriever",
-    }
-
-
-def test_get_retriever_mmr_always_uses_k_and_fetch_k_with_rerank_k(monkeypatch):
-    captured = {}
-
-    class FakeVectorstore:
-        def as_retriever(self, **kwargs):
-            captured["base"] = kwargs
-            return "base-retriever"
-
-    def fake_compressor_cls(**kwargs):
-        captured["compressor"] = kwargs
-        return "compressor"
-
-    def fake_compression_retriever(**kwargs):
-        captured["compression"] = kwargs
-        return "compressed-retriever"
-
-    monkeypatch.setattr(pipeline, "CrossEncoderReranker", fake_compressor_cls)
-    monkeypatch.setattr(
-        pipeline, "ContextualCompressionRetriever", fake_compression_retriever
-    )
-    monkeypatch.setattr(pipeline, "get_cross_encoder", lambda model: f"encoder:{model}")
-
-    result = pipeline.get_retriever(
-        FakeVectorstore(),
-        search_type="mmr",
-        retrieve_k=5,
-        mmr_fetch_k=25,
-        rerank_enabled=True,
-        rerank_model="reranker-model",
-        rerank_k=3,
-    )
-
-    assert result == "compressed-retriever"
-    assert captured["base"] == {
-        "search_type": "mmr",
-        "search_kwargs": {"k": 5, "fetch_k": 25},
-    }
-    assert captured["compressor"] == {
-        "model": "encoder:reranker-model",
-        "top_n": 3,
     }
 
 
@@ -175,9 +130,7 @@ def test_get_retriever_wraps_hybrid_with_ensemble(monkeypatch):
 
     pipeline.get_retriever(
         FakeVectorstore(),
-        search_type="similarity",
         retrieve_k=5,
-        mmr_fetch_k=25,
         rerank_model="reranker-model",
         persist_directory="./persist",
         hybrid_search=True,
@@ -287,9 +240,7 @@ def test_build_rag_chain_threads_history(monkeypatch):
         llm_model="m",
         llm_provider="ollama",
         system_prompt="sys",
-        search_type="similarity",
         retrieve_k=5,
-        mmr_fetch_k=25,
         temperature=0.0,
         rerank_model="test-reranker",
         chat_history=history,
@@ -332,9 +283,7 @@ def test_build_rag_chain_without_history_skips_condense(monkeypatch):
         llm_model="m",
         llm_provider="ollama",
         system_prompt="sys",
-        search_type="similarity",
         retrieve_k=5,
-        mmr_fetch_k=25,
         temperature=0.0,
         rerank_model="test-reranker",
     )
@@ -369,9 +318,7 @@ def test_build_rag_chain_skips_relevance_filter_when_disabled(monkeypatch):
         llm_model="m",
         llm_provider="ollama",
         system_prompt="sys",
-        search_type="similarity",
         retrieve_k=5,
-        mmr_fetch_k=25,
         temperature=0.0,
         rerank_model="test-reranker",
         relevance_filter=False,
@@ -406,9 +353,7 @@ def test_build_rag_chain_applies_relevance_filter_when_enabled(monkeypatch):
         llm_model="m",
         llm_provider="ollama",
         system_prompt="sys",
-        search_type="similarity",
         retrieve_k=5,
-        mmr_fetch_k=25,
         temperature=0.0,
         rerank_model="test-reranker",
         relevance_filter=True,
