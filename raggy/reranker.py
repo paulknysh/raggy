@@ -9,6 +9,7 @@ automatically, keeping the download small and inference fast on the CPU.
 
 from __future__ import annotations
 
+import logging
 import platform
 import threading
 from collections.abc import Sequence
@@ -18,6 +19,29 @@ import onnxruntime as ort
 from huggingface_hub import HfApi, hf_hub_download
 from langchain_core.cross_encoders import BaseCrossEncoder
 from tokenizers import Tokenizer
+
+_HF_HTTP_LOGGER = logging.getLogger("huggingface_hub.utils._http")
+
+
+class _UntauthAdvisoryFilter(logging.Filter):
+    """Drop the HF server's benign unauthenticated-download advisory line.
+
+    The Hub responds to anonymous downloads with an ``X-HF-Warning`` header
+    ("You are sending unauthenticated requests to the HF Hub. Please set a
+    HF_TOKEN ..."). huggingface-hub re-emits it at WARNING level on the first
+    cold download. It's pure noise for public model files, so we strip only
+    that specific line while letting genuine ERROR/rate-limit messages through.
+    """
+
+    _ADVISORY = "unauthenticated requests to the HF Hub"
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno >= logging.ERROR:
+            return True
+        return self._ADVISORY not in record.getMessage()
+
+
+_HF_HTTP_LOGGER.addFilter(_UntauthAdvisoryFilter())
 
 _ONNX_VARIANTS = {
     "arm64": "onnx/model_qint8_arm64.onnx",
@@ -35,7 +59,7 @@ _ONNX_FALLBACKS = (
 )
 
 _MODEL_FILES_CACHE: dict[str, tuple[str, ...]] = {}
-_HF_API = HfApi()
+_HF_API = HfApi(token=False)
 
 
 def default_onnx_file() -> str:
@@ -104,8 +128,10 @@ class OnnxCrossEncoder(BaseCrossEncoder):
 
         onnx_file = onnx_file or _resolve_onnx_file(model, default_onnx_file())
         self.onnx_file = onnx_file
-        model_path = hf_hub_download(repo_id=model, filename=onnx_file)
-        tokenizer_path = hf_hub_download(repo_id=model, filename="tokenizer.json")
+        model_path = hf_hub_download(repo_id=model, filename=onnx_file, token=False)
+        tokenizer_path = hf_hub_download(
+            repo_id=model, filename="tokenizer.json", token=False
+        )
 
         self._tokenizer = Tokenizer.from_file(tokenizer_path)
         self._tokenizer.enable_truncation(max_length=max_length)
