@@ -22,6 +22,7 @@ from .loaders import (
     load_documents_from_paths,
     load_documents_from_sources,
 )
+from .progress import ProgressCallback
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +140,7 @@ def _save_bm25_index(splits: list[Document], persist_directory: str) -> None:
         return
     corpus = [split.page_content for split in splits]
     bm25 = bm25s.BM25()
-    bm25.index(bm25s.tokenize(corpus, show_progress=False))
+    bm25.index(bm25s.tokenize(corpus, show_progress=False), show_progress=False)
     index_dir.mkdir(parents=True, exist_ok=True)
     bm25.save(str(index_dir), corpus=corpus, show_progress=False)
     metadata = [dict(split.metadata) for split in splits]
@@ -164,12 +165,19 @@ def _split_documents(
 
 
 def _embed_in_batches(
-    splits: list[Document], vectorstore: Chroma, batch_size: int
+    splits: list[Document],
+    vectorstore: Chroma,
+    batch_size: int,
+    progress: ProgressCallback | None = None,
 ) -> None:
     """Embed ``splits`` into Chroma in batches of at most ``batch_size`` chunks.
 
     The number of batches is derived dynamically from the total chunk count, so
     the setting stays sensible regardless of dataset size.
+
+    ``progress`` reports the batches on the same single status line the ingest
+    step uses; the tqdm bar is suppressed then, since two live progress
+    displays would fight over the same terminal line.
     """
     total_splits = len(splits)
     n_batches = math.ceil(total_splits / batch_size)
@@ -184,12 +192,17 @@ def _embed_in_batches(
     )
 
     remaining = list(splits)
-    for size in tqdm(
-        batch_sizes,
-        total=n_batches,
-        desc="Indexing Batches",
-        disable=not sys.stderr.isatty(),
+    for index, size in enumerate(
+        tqdm(
+            batch_sizes,
+            total=n_batches,
+            desc="Indexing Batches",
+            disable=progress is not None or not sys.stderr.isatty(),
+        ),
+        start=1,
     ):
+        if progress is not None:
+            progress(f"[{index}/{n_batches}] embedding chunks ...")
         batch = remaining[:size]
         remaining = remaining[size:]
         vectorstore.add_documents(batch)
@@ -202,6 +215,7 @@ def create_index(
     chunk_overlap: int,
     batch_size: int,
     persist_directory: str,
+    progress: ProgressCallback | None = None,
 ) -> None:
     """Build the index from scratch: load, split, and embed every source file.
 
@@ -214,8 +228,10 @@ def create_index(
 
     Also builds a BM25 index over the same chunks and persists it to
     ``<persist_directory>/bm25_index/`` for hybrid retrieval.
+
+    ``progress`` receives one status line per file read and per embedded batch.
     """
-    docs = load_documents_from_sources(sources)
+    docs = load_documents_from_sources(sources, progress=progress)
 
     if not docs:
         logger.warning("No documents found to index.")
@@ -228,7 +244,7 @@ def create_index(
         logger.warning("No content found to split and index.")
         return
 
-    _embed_in_batches(splits, vectorstore, batch_size)
+    _embed_in_batches(splits, vectorstore, batch_size, progress)
     _save_bm25_index(splits, persist_directory)
 
 
@@ -278,6 +294,7 @@ def update_index(
     chunk_overlap: int,
     batch_size: int,
     persist_directory: str,
+    progress: ProgressCallback | None = None,
 ) -> None:
     """Apply ``plan`` to an existing DB without re-embedding untouched files.
 
@@ -294,10 +311,12 @@ def update_index(
     reindexed = plan.added + plan.modified
     if reindexed:
         logger.info("Indexing %d new/changed file(s).", len(reindexed))
-        docs = load_documents_from_paths([Path(path) for path in reindexed])
+        docs = load_documents_from_paths(
+            [Path(path) for path in reindexed], progress=progress
+        )
         splits = _split_documents(docs, chunk_size, chunk_overlap)
         if splits:
-            _embed_in_batches(splits, vectorstore, batch_size)
+            _embed_in_batches(splits, vectorstore, batch_size, progress)
         else:
             logger.warning("No content found in the new/changed files.")
 
@@ -464,6 +483,7 @@ def initialize_db(
     chunk_size: int,
     chunk_overlap: int,
     batch_size: int,
+    progress: ProgressCallback | None = None,
 ) -> Chroma:
     """
     Initializes the Chroma database.
@@ -473,6 +493,9 @@ def initialize_db(
     persist directory is wiped and the docs are re-indexed from scratch. If
     only the source files changed, the DB is updated incrementally: just the
     added and modified files are embedded and the removed ones dropped.
+
+    ``progress`` receives a status line for each step of that work (see
+    :func:`create_index`); it is never called when the DB is already current.
     """
     # Config that determines the index content; only these drive re-indexing.
     index_cfg = build_index_config(sources, chunk_size, chunk_overlap, embedding_model)
@@ -500,6 +523,7 @@ def initialize_db(
             chunk_overlap=chunk_overlap,
             batch_size=batch_size,
             persist_directory=persist_directory,
+            progress=progress,
         )
         _write_manifest(persist_directory, index_cfg)
         logger.info("Successfully saved DB to '%s'.", persist_directory)
@@ -518,6 +542,7 @@ def initialize_db(
             chunk_overlap=chunk_overlap,
             batch_size=batch_size,
             persist_directory=persist_directory,
+            progress=progress,
         )
         _write_manifest(persist_directory, index_cfg)
         logger.info("Successfully updated DB in '%s'.", persist_directory)

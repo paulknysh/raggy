@@ -1,6 +1,6 @@
 import subprocess
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -204,3 +204,83 @@ def test_ensure_ollama_model_pull_failure_raises_runtime_error(monkeypatch):
     monkeypatch.setattr(llm_factory.subprocess, "run", fake_run)
     with pytest.raises(RuntimeError, match="Failed to pull Ollama model 'ghost'"):
         llm_factory.ensure_ollama_model("ghost")
+
+
+def _fake_pull_module(events, calls):
+    """A stand-in for the ``ollama`` package exposing a streaming ``pull``."""
+
+    def pull(model, stream=False):
+        calls.append((model, stream))
+        return iter(events)
+
+    return _fake_provider_module("ollama", {"pull": pull})
+
+
+def test_ensure_ollama_model_streams_pull_progress(monkeypatch):
+    monkeypatch.setattr(llm_factory.shutil, "which", lambda _: "/usr/local/bin/ollama")
+
+    ran = []
+
+    def fake_run(cmd, **kwargs):
+        ran.append(list(cmd))
+
+        class Result:
+            stdout = "NAME\tID\tSIZE\tMODIFIED\n"
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(llm_factory.subprocess, "run", fake_run)
+
+    events = [
+        SimpleNamespace(status="pulling manifest", completed=None, total=None),
+        SimpleNamespace(status="pulling 970aa74c", completed=100, total=274),
+        SimpleNamespace(status="pulling 970aa74c", completed=274, total=274),
+        SimpleNamespace(status="success", completed=None, total=None),
+    ]
+    calls = []
+    monkeypatch.setitem(sys.modules, "ollama", _fake_pull_module(events, calls))
+
+    reported = []
+    assert (
+        llm_factory.ensure_ollama_model(
+            "nomic-embed-text",
+            progress=lambda message, completed=None, total=None: reported.append(
+                (message, completed, total)
+            ),
+        )
+        is True
+    )
+
+    assert calls == [("nomic-embed-text", True)]
+    assert reported == [
+        ("pulling nomic-embed-text ... (pulling manifest)", None, None),
+        ("pulling nomic-embed-text ...", 100, 274),
+        ("pulling nomic-embed-text ...", 274, 274),
+        ("pulling nomic-embed-text ... (success)", None, None),
+    ]
+    # The pull went over the API; the CLI was only used to list what is present.
+    assert ran == [["/usr/local/bin/ollama", "list"]]
+
+
+def test_ensure_ollama_model_streamed_pull_failure_raises_runtime_error(monkeypatch):
+    monkeypatch.setattr(llm_factory.shutil, "which", lambda _: "/usr/local/bin/ollama")
+
+    def fake_run(cmd, **kwargs):
+        class Result:
+            stdout = "NAME\tID\tSIZE\tMODIFIED\n"
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(llm_factory.subprocess, "run", fake_run)
+
+    def exploding_pull(model, stream=False):
+        raise ConnectionError("[Errno 61] Connection refused")
+
+    monkeypatch.setitem(
+        sys.modules, "ollama", _fake_provider_module("ollama", {"pull": exploding_pull})
+    )
+
+    with pytest.raises(RuntimeError, match="Failed to pull Ollama model 'ghost'"):
+        llm_factory.ensure_ollama_model("ghost", progress=lambda *a, **kw: None)

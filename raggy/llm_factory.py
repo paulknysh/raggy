@@ -12,6 +12,8 @@ import subprocess
 
 from langchain_core.language_models import BaseChatModel
 
+from .progress import ProgressCallback
+
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PROVIDERS = ("ollama", "openai", "anthropic", "google")
@@ -23,13 +25,33 @@ SUPPORTED_PROVIDERS = ("ollama", "openai", "anthropic", "google")
 _DEFAULT_MAX_TOKENS = 1024
 
 
-def ensure_ollama_model(model: str) -> bool:
+def _stream_pull(model: str, progress: ProgressCallback) -> None:
+    """Pull ``model`` through Ollama's API, reporting progress as it downloads.
+
+    The ``ollama pull`` CLI draws its own progress bars straight to the
+    terminal, which a front end can neither label nor place. Pulling over the
+    API instead yields the same work as ``status``/``completed``/``total``
+    events, so the caller decides how it looks.
+    """
+    from ollama import pull
+
+    for event in pull(model, stream=True):
+        if event.total:
+            progress(f"pulling {model} ...", event.completed or 0, event.total)
+        elif event.status:
+            progress(f"pulling {model} ... ({event.status})")
+
+
+def ensure_ollama_model(model: str, progress: ProgressCallback | None = None) -> bool:
     """Pull ``model`` into the local Ollama instance if it isn't already present.
 
-    Runs ``ollama pull <model>``, which is idempotent: when the model is already
-    downloaded Ollama pulls nothing. Returns True if a pull was performed (model
-    was missing), False if the model was already present. Raises ``RuntimeError``
-    if the ``ollama`` CLI cannot be found or the pull itself fails.
+    Returns True if a pull was performed (model was missing), False if the
+    model was already present. Raises ``RuntimeError`` if the ``ollama`` CLI
+    cannot be found or the pull itself fails.
+
+    Without ``progress`` the pull runs as ``ollama pull <model>`` and Ollama
+    renders its own output; pass a callback to receive the download progress
+    instead and keep the terminal under the caller's control.
     """
     exe = shutil.which("ollama")
     if exe is None:
@@ -60,11 +82,16 @@ def ensure_ollama_model(model: str) -> bool:
 
     logger.info("Pulling Ollama model '%s' (first run may take a while)...", model)
     try:
-        subprocess.run([exe, "pull", model], check=True)
+        if progress is None:
+            subprocess.run([exe, "pull", model], check=True)
+        else:
+            _stream_pull(model, progress)
     except subprocess.CalledProcessError as e:
         raise RuntimeError(
             f"Failed to pull Ollama model '{model}': {e.stderr.strip() or e}"
         ) from e
+    except Exception as e:  # API transport/protocol failures
+        raise RuntimeError(f"Failed to pull Ollama model '{model}': {e}") from e
     return True
 
 

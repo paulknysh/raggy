@@ -26,6 +26,7 @@ dependencies = [
     "langchain-chroma",
     "langchain-core",
     "langchain-classic",
+    "ollama",
     "pypdf",
     "PyYAML",
     "pydantic>=2.0.0",

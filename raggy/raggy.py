@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +9,7 @@ from langchain_chroma import Chroma
 from .config import RaggySettings
 from .llm_factory import ensure_ollama_model
 from .pipeline import build_rag_chain
+from .progress import ProgressCallback
 from .vectorstore import (
     build_index_config,
     close_vectorstore,
@@ -56,12 +57,29 @@ def load_config(config_path: str = "config.yaml") -> dict[str, Any]:
     return result
 
 
-def _init_db() -> Chroma:
+def ensure_models(
+    cfg: dict[str, Any],
+    progress: ProgressCallback | None = None,
+) -> None:
+    """Pull every locally-run model ``cfg`` needs, before any of them is used.
+
+    Embeddings are always local; the generation model only when
+    ``llm_provider`` is ``ollama``. Both are pulled on demand by the pipeline
+    anyway, but a first run downloads gigabytes, so a front end can call this
+    up front with a ``progress`` callback and report the download rather than
+    stalling mid-question.
+    """
+    ensure_ollama_model(cfg["embedding_model"], progress=progress)
+    if cfg["llm_provider"] == "ollama":
+        ensure_ollama_model(cfg["llm_model"], progress=progress)
+
+
+def _init_db(progress: ProgressCallback | None = None) -> Chroma:
     cfg = load_config()
 
     # Embeddings are always local, so the (always-required) embedding model is
     # pulled up front before any embedding work begins.
-    ensure_ollama_model(cfg["embedding_model"])
+    ensure_ollama_model(cfg["embedding_model"], progress=progress)
 
     vectorstore = initialize_db(
         persist_directory=cfg["persist_directory"],
@@ -70,6 +88,7 @@ def _init_db() -> Chroma:
         chunk_size=cfg["chunk_size"],
         chunk_overlap=cfg["chunk_overlap"],
         batch_size=cfg["batch_size"],
+        progress=progress,
     )
 
     return vectorstore
@@ -85,7 +104,11 @@ def _get_vectorstore() -> Chroma:
     return _vectorstore
 
 
-def refresh_db(cfg: dict[str, Any] | None = None) -> bool:
+def refresh_db(
+    cfg: dict[str, Any] | None = None,
+    progress: ProgressCallback | None = None,
+    on_stale: Callable[[], None] | None = None,
+) -> bool:
     """Re-check the source docs and re-index the vector DB if they changed.
 
     ``_get_vectorstore`` caches the initialized store for the life of the
@@ -95,7 +118,14 @@ def refresh_db(cfg: dict[str, Any] | None = None) -> bool:
     :func:`raggy.vectorstore.initialize_db`).
 
     Pass a pre-loaded ``cfg`` dict to avoid re-reading ``config.yaml``
-    (and re-hashing source files) when the caller already has it.
+    (and re-hashing source files) when the caller already has it. ``progress``
+    receives one status line per file ingested and per embedded batch, so a
+    caller can show what the (slow) re-indexing is currently working on.
+
+    ``on_stale`` is called once the DB is found to be out of date, before any
+    re-indexing begins. Staleness is only known after every source file has
+    been hashed, so a caller cannot cheaply determine it up front to announce
+    the wait before it starts.
     """
     global _vectorstore
     if cfg is None:
@@ -109,10 +139,13 @@ def refresh_db(cfg: dict[str, Any] | None = None) -> bool:
     if not db_needs_rebuild(cfg["persist_directory"], index_cfg):
         return False
 
+    if on_stale is not None:
+        on_stale()
+
     logger.info("Source documents or index config changed; re-indexing DB.")
     if _vectorstore is not None:
         close_vectorstore(_vectorstore)
-    _vectorstore = _init_db()
+    _vectorstore = _init_db(progress)
     return True
 
 

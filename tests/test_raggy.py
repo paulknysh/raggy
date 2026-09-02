@@ -394,7 +394,9 @@ def test_init_db_forwards_config_to_initialize_db(monkeypatch):
     sentinel = object()
 
     monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
-    monkeypatch.setattr(raggy, "ensure_ollama_model", lambda model: False)
+    monkeypatch.setattr(
+        raggy, "ensure_ollama_model", lambda model, progress=None: False
+    )
 
     def fake_initialize_db(**kwargs):
         captured.update(kwargs)
@@ -412,6 +414,7 @@ def test_init_db_forwards_config_to_initialize_db(monkeypatch):
         "chunk_size": 100,
         "chunk_overlap": 10,
         "batch_size": 100,
+        "progress": None,
     }
 
 
@@ -451,7 +454,9 @@ def test_run_pipeline_returns_response_and_retrieved_docs(monkeypatch):
 
     monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
     monkeypatch.setattr(raggy, "_get_vectorstore", lambda: object())
-    monkeypatch.setattr(raggy, "ensure_ollama_model", lambda model: False)
+    monkeypatch.setattr(
+        raggy, "ensure_ollama_model", lambda model, progress=None: False
+    )
     monkeypatch.setattr(raggy, "build_rag_chain", fake_build_rag_chain)
 
     response, docs = raggy.run_pipeline("hello")
@@ -491,7 +496,9 @@ def test_run_pipeline_forwards_chat_history(monkeypatch):
 
     monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
     monkeypatch.setattr(raggy, "_get_vectorstore", lambda: object())
-    monkeypatch.setattr(raggy, "ensure_ollama_model", lambda model: False)
+    monkeypatch.setattr(
+        raggy, "ensure_ollama_model", lambda model, progress=None: False
+    )
     monkeypatch.setattr(raggy, "build_rag_chain", fake_build_rag_chain)
 
     raggy.run_pipeline("follow-up", chat_history=history)
@@ -520,7 +527,7 @@ def test_refresh_db_rebuilds_when_stale(monkeypatch):
         "close_vectorstore",
         lambda store: calls.__setitem__("close", calls["close"] + 1),
     )
-    monkeypatch.setattr(raggy, "_init_db", lambda: new_store)
+    monkeypatch.setattr(raggy, "_init_db", lambda progress=None: new_store)
     raggy._vectorstore = old_store
 
     try:
@@ -552,7 +559,9 @@ def test_refresh_db_skips_rebuild_when_fresh(monkeypatch):
         "close_vectorstore",
         lambda store: calls.__setitem__("close", calls["close"] + 1),
     )
-    monkeypatch.setattr(raggy, "_init_db", lambda: calls.__setitem__("init", 1))
+    monkeypatch.setattr(
+        raggy, "_init_db", lambda progress=None: calls.__setitem__("init", 1)
+    )
     raggy._vectorstore = object()
 
     try:
@@ -593,7 +602,9 @@ def test_run_pipeline_stream_yields_chunks_and_captures_docs(monkeypatch):
 
     monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
     monkeypatch.setattr(raggy, "_get_vectorstore", lambda: object())
-    monkeypatch.setattr(raggy, "ensure_ollama_model", lambda model: False)
+    monkeypatch.setattr(
+        raggy, "ensure_ollama_model", lambda model, progress=None: False
+    )
     monkeypatch.setattr(raggy, "build_rag_chain", fake_build_rag_chain)
 
     doc_sink = []
@@ -632,7 +643,9 @@ def test_run_pipeline_stream_forwards_chat_history(monkeypatch):
 
     monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
     monkeypatch.setattr(raggy, "_get_vectorstore", lambda: object())
-    monkeypatch.setattr(raggy, "ensure_ollama_model", lambda model: False)
+    monkeypatch.setattr(
+        raggy, "ensure_ollama_model", lambda model, progress=None: False
+    )
     monkeypatch.setattr(raggy, "build_rag_chain", fake_build_rag_chain)
 
     list(raggy.run_pipeline_stream("follow-up", chat_history=history))
@@ -659,7 +672,9 @@ def test_run_pipeline_propagates_unexpected_error(monkeypatch):
 
     monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
     monkeypatch.setattr(raggy, "_get_vectorstore", lambda: object())
-    monkeypatch.setattr(raggy, "ensure_ollama_model", lambda model: False)
+    monkeypatch.setattr(
+        raggy, "ensure_ollama_model", lambda model, progress=None: False
+    )
 
     def boom(**_):
         raise RuntimeError("broken")
@@ -668,3 +683,81 @@ def test_run_pipeline_propagates_unexpected_error(monkeypatch):
 
     with pytest.raises(RuntimeError, match="broken"):
         raggy.run_pipeline("hello")
+
+
+def test_ensure_models_pulls_embedding_and_local_llm(monkeypatch):
+    pulled = []
+    monkeypatch.setattr(
+        raggy,
+        "ensure_ollama_model",
+        lambda model, progress=None: pulled.append((model, progress)),
+    )
+
+    sentinel = object()
+    raggy.ensure_models(
+        {"embedding_model": "embed-x", "llm_provider": "ollama", "llm_model": "llm-x"},
+        progress=sentinel,
+    )
+
+    assert pulled == [("embed-x", sentinel), ("llm-x", sentinel)]
+
+
+def test_ensure_models_skips_llm_for_remote_providers(monkeypatch):
+    pulled = []
+    monkeypatch.setattr(
+        raggy,
+        "ensure_ollama_model",
+        lambda model, progress=None: pulled.append(model),
+    )
+
+    # Embeddings are always local, so the embedding model is still pulled.
+    raggy.ensure_models(
+        {"embedding_model": "embed-x", "llm_provider": "openai", "llm_model": "gpt-4o"}
+    )
+
+    assert pulled == ["embed-x"]
+
+
+def test_refresh_db_announces_staleness_before_reindexing(monkeypatch):
+    fake_cfg = {
+        "sources": ["./docs"],
+        "persist_directory": "./persist",
+        "chunk_size": 100,
+        "chunk_overlap": 10,
+        "embedding_model": "embed-x",
+    }
+    events = []
+
+    monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
+    monkeypatch.setattr(raggy, "build_index_config", lambda **kwargs: {"fake": True})
+    monkeypatch.setattr(raggy, "db_needs_rebuild", lambda *_: True)
+    monkeypatch.setattr(raggy, "close_vectorstore", lambda store: None)
+    monkeypatch.setattr(
+        raggy, "_init_db", lambda progress=None: events.append("reindexed")
+    )
+
+    try:
+        raggy.refresh_db(on_stale=lambda: events.append("announced"))
+    finally:
+        raggy._vectorstore = None
+
+    # The announcement is only useful ahead of the work it describes.
+    assert events == ["announced", "reindexed"]
+
+
+def test_refresh_db_stays_quiet_when_db_is_current(monkeypatch):
+    fake_cfg = {
+        "sources": ["./docs"],
+        "persist_directory": "./persist",
+        "chunk_size": 100,
+        "chunk_overlap": 10,
+        "embedding_model": "embed-x",
+    }
+    events = []
+
+    monkeypatch.setattr(raggy, "load_config", lambda: fake_cfg)
+    monkeypatch.setattr(raggy, "build_index_config", lambda **kwargs: {"fake": True})
+    monkeypatch.setattr(raggy, "db_needs_rebuild", lambda *_: False)
+
+    assert raggy.refresh_db(on_stale=lambda: events.append("announced")) is False
+    assert events == []

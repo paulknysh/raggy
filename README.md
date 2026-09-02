@@ -71,6 +71,9 @@ raggy
 
 <img src="assets/cli_demo.png">
 
+**Important:** On the first run CLI pulls Ollama models listed in `config.yaml` and indexes your
+documents -- this might take a while, depending on document count/size and whether OCR is needed (scans, images etc)
+
 You can also use it programmatically:
 
 ```python

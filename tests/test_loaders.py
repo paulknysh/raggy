@@ -293,3 +293,46 @@ def test_load_documents_from_paths_skips_missing_and_unsupported(tmp_path):
     )
 
     assert [doc.page_content for doc in documents] == ["kept"]
+
+
+def test_load_documents_from_sources_reports_progress_per_file(tmp_path):
+    dir_a = tmp_path / "a"
+    dir_a.mkdir()
+    (dir_a / "one.txt").write_text("Text A", encoding="utf-8")
+    (dir_a / "skip.csv").write_text("ignored", encoding="utf-8")
+    (tmp_path / "two.md").write_text("Text B", encoding="utf-8")
+
+    messages: list[str] = []
+    load_documents_from_sources(
+        [str(dir_a), str(tmp_path / "two.md")], progress=messages.append
+    )
+
+    assert messages == [
+        "[1/2] ingesting one.txt ...",
+        "[2/2] ingesting two.md ...",
+    ]
+
+
+def test_load_documents_from_paths_reports_progress_for_existing_files(tmp_path):
+    first = tmp_path / "first.txt"
+    first.write_text("first", encoding="utf-8")
+    missing = tmp_path / "gone.txt"
+
+    messages: list[str] = []
+    loaders.load_documents_from_paths([first, missing], progress=messages.append)
+
+    assert messages == ["[1/1] ingesting first.txt ..."]
+
+
+def test_loading_without_progress_does_not_walk_the_sources_twice(
+    tmp_path, monkeypatch
+):
+    """The i/N denominator costs a walk, so it is only counted when watched."""
+    (tmp_path / "one.txt").write_text("Text A", encoding="utf-8")
+
+    def fail_if_counted(path):
+        raise AssertionError("counted the sources with no progress callback")
+
+    monkeypatch.setattr(loaders, "_supported_files", fail_if_counted)
+
+    assert load_documents_from_sources([str(tmp_path)])

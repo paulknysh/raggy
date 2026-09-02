@@ -351,14 +351,14 @@ def test_update_index_deletes_stale_chunks_and_embeds_changed_files(
     monkeypatch.setattr(
         vectorstore,
         "load_documents_from_paths",
-        lambda paths: [
+        lambda paths, progress=None: [
             Document(page_content="new text", metadata={"source": str(paths[0])})
         ],
     )
     monkeypatch.setattr(
         vectorstore,
         "_embed_in_batches",
-        lambda splits, store, batch_size: embedded.extend(splits),
+        lambda splits, store, batch_size, progress=None: embedded.extend(splits),
     )
     monkeypatch.setattr(
         vectorstore,

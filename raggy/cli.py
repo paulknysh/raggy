@@ -9,9 +9,23 @@ from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    DownloadColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+)
 from rich.table import Table
+from rich.text import Text
 
-from .raggy import load_config, refresh_db, run_pipeline_stream, source_label
+from .raggy import (
+    ensure_models,
+    load_config,
+    refresh_db,
+    run_pipeline_stream,
+    source_label,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +55,82 @@ def _ask(prompt: str) -> str:
     to ``input()`` is measured correctly by both libedit and GNU readline, so
     backspacing and arrow keys behave as expected.
     """
-    from rich.text import Text
-
     plain = Text.from_markup(prompt).plain
     return input(plain)
+
+
+class _ProgressLine:
+    """Single-line, in-place status for the slow steps of a turn.
+
+    Pulling models and indexing documents are what keep a user waiting, so
+    both report what they are working on instead of hanging on a bare spinner.
+    A pull knows how many bytes it has left and gets a download bar; the
+    indexing steps can only name the file or batch and get a spinner and a
+    message. Only one of the two displays is ever live, and neither is started
+    until there is something to report: sessions with nothing to do print
+    nothing.
+    """
+
+    def __init__(self) -> None:
+        self._status = None
+        self._bar = None
+        self._task = None
+
+    def __enter__(self):
+        return self
+
+    def __call__(
+        self,
+        message: str,
+        completed: int | None = None,
+        total: int | None = None,
+    ) -> None:
+        if total is None:
+            self._close_bar()
+            self._show_message(message)
+        else:
+            self._close_status()
+            self._show_bar(message, completed or 0, total)
+
+    def _show_message(self, message: str) -> None:
+        text = Text(message, style=STATUS_ACCENT)
+        if self._status is None:
+            self._status = console.status(text)
+            self._status.start()
+        else:
+            self._status.update(text)
+
+    def _show_bar(self, message: str, completed: int, total: int) -> None:
+        if self._bar is None:
+            self._bar = Progress(
+                SpinnerColumn(),
+                TextColumn("{task.description}", style=STATUS_ACCENT),
+                BarColumn(complete_style=ACCENT, finished_style=ACCENT),
+                DownloadColumn(),
+                console=console,
+                transient=True,
+            )
+            self._bar.start()
+            self._task = self._bar.add_task(message, total=total, completed=completed)
+        else:
+            self._bar.update(
+                self._task, description=message, total=total, completed=completed
+            )
+
+    def _close_status(self) -> None:
+        if self._status is not None:
+            self._status.stop()
+            self._status = None
+
+    def _close_bar(self) -> None:
+        if self._bar is not None:
+            self._bar.stop()
+            self._bar = None
+            self._task = None
+
+    def __exit__(self, *exc_info) -> None:
+        self._close_status()
+        self._close_bar()
 
 
 def _answer_panel(text: str) -> Panel:
@@ -150,7 +236,18 @@ def _run_turn(query: str, chat_history: list[tuple[str, str]]) -> None:
     doc_sink: list = []
     try:
         cfg = load_config()
-        rebuilt = refresh_db(cfg)
+        with _ProgressLine() as progress:
+            # Pulled here rather than left to the pipeline: a first run
+            # downloads gigabytes, and the download belongs on the status line
+            # instead of inside the retrieval spinner.
+            ensure_models(cfg, progress=progress)
+            rebuilt = refresh_db(
+                cfg,
+                progress=progress,
+                on_stale=lambda: console.print(
+                    f"[{ACCENT}]DB needs updating...[/{ACCENT}]"
+                ),
+            )
         with console.status(f"[{STATUS_ACCENT}]Retrieving...[/{STATUS_ACCENT}]"):
             stream = run_pipeline_stream(
                 query, doc_sink=doc_sink, chat_history=chat_history
@@ -248,4 +345,8 @@ def run_chat() -> None:
 def main() -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
     logging.getLogger("raggy").setLevel(logging.WARNING)
+    # bm25s raises its own logger to DEBUG at import time, so the root level
+    # set above does not gate it: without this, every BM25 index build prints
+    # "DEBUG: Building index from IDs objects" into the chat.
+    logging.getLogger("bm25s").setLevel(logging.WARNING)
     run_chat()
