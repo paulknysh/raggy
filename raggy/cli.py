@@ -90,6 +90,115 @@ def print_citations(retrieved_docs) -> None:
     console.print(table)
 
 
+_OLLAMA_HINT = (
+    "Could not reach the model service. Embeddings always run locally, so make "
+    "sure Ollama is up: `ollama serve`."
+)
+
+_API_KEY_HINT = (
+    "Set the provider's API key (OPENAI_API_KEY / ANTHROPIC_API_KEY / "
+    "GEMINI_API_KEY), then restart raggy — the process reads it at startup."
+)
+
+# Matched (lowercased) against the exception message. The underlying libraries
+# report these as bare transport/validation errors, which say nothing about
+# what the user should do next.
+_ERROR_HINTS = (
+    ("connection refused", _OLLAMA_HINT),
+    ("failed to connect", _OLLAMA_HINT),
+    ("api_key", _API_KEY_HINT),
+    ("api key", _API_KEY_HINT),
+)
+
+
+def _error_hint(exc: Exception) -> str | None:
+    """Return an actionable next step for the failure shapes we can recognize."""
+    text = str(exc).lower()
+    for needle, hint in _ERROR_HINTS:
+        if needle in text:
+            return hint
+    return None
+
+
+def _report_error(exc: Exception) -> None:
+    """Print a failed turn's cause, with a hint when we recognize it.
+
+    The traceback goes to the logger at debug level instead of the console:
+    printing a full traceback above the message buries the one line the user
+    can act on. Raise the ``raggy`` logger to DEBUG to get it back.
+    """
+    logger.debug("Turn failed", exc_info=exc)
+    console.print(f"[red]Error:[/red] {exc or exc.__class__.__name__}")
+    hint = _error_hint(exc)
+    if hint:
+        console.print(f"[{ACCENT}]{hint}[/{ACCENT}]")
+
+
+def _run_turn(query: str, chat_history: list[tuple[str, str]]) -> None:
+    """Answer one query, printing the answer and its citations. Never raises.
+
+    Every failure is contained in the turn that caused it. Most causes are
+    transient or fixable while the session is open — Ollama not yet running, a
+    source file being rewritten mid-index, a provider timeout — so ending the
+    chat (and discarding the conversation memory built up so far) would throw
+    away more than the failed question.
+
+    ``chat_history`` is only extended when a turn produces a complete answer:
+    a partial answer is left on screen for the user to read but kept out of the
+    context of later turns.
+    """
+    doc_sink: list = []
+    try:
+        cfg = load_config()
+        rebuilt = refresh_db(cfg)
+        with console.status(f"[{STATUS_ACCENT}]Retrieving...[/{STATUS_ACCENT}]"):
+            stream = run_pipeline_stream(
+                query, doc_sink=doc_sink, chat_history=chat_history
+            )
+            first_chunk = next(stream)
+    except StopIteration:
+        console.print("[red]Error:[/red] the model returned an empty answer.")
+        return
+    except KeyboardInterrupt:
+        console.print(f"\n[{ACCENT}]Cancelled.[/{ACCENT}]")
+        return
+    except Exception as e:  # noqa: BLE001  reported, then the session continues
+        _report_error(e)
+        return
+
+    if rebuilt:
+        console.print(f"[{ACCENT}]DB updated.[/{ACCENT}]")
+
+    response_parts = [first_chunk]
+    complete = True
+    try:
+        with Live(
+            _answer_panel(response_parts[0]), console=console, refresh_per_second=12
+        ) as live:
+            for chunk in stream:
+                response_parts.append(chunk)
+                live.update(_answer_panel("".join(response_parts)))
+    except KeyboardInterrupt:
+        complete = False
+        console.print(
+            f"\n[{ACCENT}]Answer interrupted; showing what was generated.[/{ACCENT}]"
+        )
+    except Exception as e:  # noqa: BLE001  the partial answer stays on screen
+        complete = False
+        _report_error(e)
+
+    # Printed even for a failed generation: retrieval populates the sink before
+    # the LLM runs, so the citations show what the answer was cut short on.
+    console.print()
+    print_citations(doc_sink[-1] if doc_sink else [])
+    console.print()
+
+    if complete:
+        chat_history.append(("human", query))
+        chat_history.append(("ai", "".join(response_parts)))
+        del chat_history[: -MEMORY_TURNS * 2]
+
+
 def run_chat() -> None:
     console.print(
         Panel.fit(
@@ -103,6 +212,14 @@ def run_chat() -> None:
     )
     console.print()
 
+    # The only unrecoverable failure: without a valid config there is nothing to
+    # answer from, so fail here rather than on every question the user types.
+    try:
+        load_config()
+    except Exception as e:  # noqa: BLE001
+        _report_error(e)
+        return
+
     chat_history: list[tuple[str, str]] = []
 
     while True:
@@ -114,64 +231,18 @@ def run_chat() -> None:
             return
 
         query = query.strip()
-        if query == "/exit":
+        if query in {"/exit", "exit"}:
             console.print()
             console.print(f"[{ACCENT}]See you![/{ACCENT}]")
             return
-        if query == "/clear":
+        if query in {"/clear", "clear"}:
             chat_history.clear()
             console.print(f"[{ACCENT}]Conversation memory cleared.[/{ACCENT}]")
             continue
         if not query:
             continue
 
-        try:
-            cfg = load_config()
-            rebuilt = refresh_db(cfg)
-            doc_sink: list = []
-            with console.status(f"[{STATUS_ACCENT}]Retrieving...[/{STATUS_ACCENT}]"):
-                stream = run_pipeline_stream(
-                    query, doc_sink=doc_sink, chat_history=chat_history
-                )
-                first_chunk = next(stream)
-        except FileNotFoundError as e:
-            console.print(f"[red]Error:[/red] {e}")
-            return
-        except Exception as e:
-            logger.exception("An unexpected error occurred")
-            console.print(f"[red]Error:[/red] {e}")
-            return
-
-        if rebuilt:
-            console.print(f"[{ACCENT}]DB updated.[/{ACCENT}]")
-
-        response_parts = [first_chunk]
-        interrupted = False
-        try:
-            with Live(_answer_panel(response_parts[0]), refresh_per_second=12) as live:
-                for chunk in stream:
-                    response_parts.append(chunk)
-                    live.update(_answer_panel("".join(response_parts)))
-        except KeyboardInterrupt:
-            interrupted = True
-            console.print(
-                f"\n[{ACCENT}]Answer interrupted; showing what was generated.[/{ACCENT}]"
-            )
-        except Exception as e:
-            logger.exception("An unexpected error occurred")
-            console.print(f"[red]Error:[/red] {e}")
-            return
-
-        retrieved_docs = doc_sink[-1] if doc_sink else []
-
-        console.print()
-        print_citations(retrieved_docs)
-        console.print()
-
-        if not interrupted:
-            chat_history.append(("human", query))
-            chat_history.append(("ai", "".join(response_parts)))
-            del chat_history[: -MEMORY_TURNS * 2]
+        _run_turn(query, chat_history)
 
 
 def main() -> None:
