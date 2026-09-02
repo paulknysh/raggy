@@ -145,7 +145,7 @@ directory recording these parameters:
 - `chunk_size`
 - `chunk_overlap`
 - `embedding_model`
-- `content_hash` — a SHA-256 fingerprint of the source files
+- `files` — a `{file path: SHA-256 content hash}` map of every indexed file
 
 The same chunks are also indexed with `bm25s` (a lexical BM25 index), stored in
 `<persist_directory>/bm25_index/`, so `hybrid_search` can run without re-indexing
@@ -153,8 +153,23 @@ at retrieval time.
 
 ### How/when the DB is re-indexed
 
-The `manifest.yaml` is cheap to recompute, so for every new run it is computed and compared against existing one.
-Any changes to its content, including changes to `content_hash` will cause DB to be re-indexed.
+The `manifest.yaml` is cheap to recompute, so for every new run it is computed and
+compared against the existing one. What happens next depends on what changed:
+
+- **Incremental update (the common case)** — the source files changed but
+  `chunk_size`, `chunk_overlap`, and `embedding_model` did not. Comparing the two
+  `files` maps names exactly which files were added, modified, or deleted. Chunks
+  belonging to deleted and modified files are dropped from Chroma, and only added
+  and modified files are re-loaded and embedded. Untouched files are never
+  re-embedded, so editing one file in a large corpus costs one file's worth of work.
+- **Full rebuild** — `chunk_size`, `chunk_overlap`, or `embedding_model` changed
+  (every stored vector is then invalid), or there is no manifest yet. The persist
+  directory is wiped and everything is indexed from scratch. Note that a manifest
+  written before incremental indexing existed also triggers one full rebuild.
+
+The BM25 index has no incremental update path, so it is rebuilt after every update —
+from the chunks already stored in Chroma, which needs no embedding calls and no
+re-reading of source files.
 
 
 ## Notes
@@ -177,6 +192,7 @@ Any changes to its content, including changes to `content_hash` will cause DB to
 - [x] Conversation memory in chat mode
 - [x] Pydantic validation of config file
 - [x] Hybrid retrieval, tuning config defaults
+- [x] Incremental indexing (only re-embed files that changed)
 - [ ] UX/UI tuning of CLI (improved commands/statuses etc)
 - [ ] Performance optimizations
 

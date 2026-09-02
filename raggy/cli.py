@@ -143,7 +143,7 @@ def run_chat() -> None:
             return
 
         if rebuilt:
-            console.print(f"[{ACCENT}]DB re-indexed.[/{ACCENT}]")
+            console.print(f"[{ACCENT}]DB updated.[/{ACCENT}]")
 
         response_parts = [first_chunk]
         interrupted = False

@@ -253,3 +253,24 @@ def load_documents_from_sources(sources: list[str]) -> list[Document]:
         documents.extend(load_documents(str(path), skipped))
     _report_unsupported(skipped)
     return documents
+
+
+def load_documents_from_paths(paths: list[Path]) -> list[Document]:
+    """Load documents from an explicit list of files.
+
+    Used by incremental indexing, which already knows exactly which files were
+    added or modified and must not re-read the rest of the corpus. Files that
+    fail to load are logged and skipped rather than aborting the update.
+    """
+    documents: list[Document] = []
+    skipped: list[Path] = []
+    for path in paths:
+        if not path.exists():
+            logger.warning("Skipping '%s': file no longer exists.", path)
+            continue
+        try:
+            documents.extend(_load_file(path, skipped))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Failed to load '%s': %s", path, e)
+    _report_unsupported(skipped)
+    return documents

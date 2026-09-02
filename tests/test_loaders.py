@@ -263,3 +263,33 @@ def test_load_documents_ocr_fallback_for_scanned_pdf(tmp_path):
     assert len(documents) == 1
     assert "HELLOWORLD" in _compact(documents[0].page_content)
     assert documents[0].metadata["page"] == 1
+
+
+def test_load_documents_from_paths_loads_only_given_files(tmp_path):
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    ignored = tmp_path / "ignored.txt"
+    first.write_text("first content", encoding="utf-8")
+    second.write_text("second content", encoding="utf-8")
+    ignored.write_text("ignored content", encoding="utf-8")
+
+    documents = loaders.load_documents_from_paths([first, second])
+
+    assert [doc.page_content for doc in documents] == [
+        "first content",
+        "second content",
+    ]
+    assert [doc.metadata["source"] for doc in documents] == [str(first), str(second)]
+
+
+def test_load_documents_from_paths_skips_missing_and_unsupported(tmp_path):
+    present = tmp_path / "present.md"
+    present.write_text("kept", encoding="utf-8")
+    unsupported = tmp_path / "data.csv"
+    unsupported.write_text("a,b", encoding="utf-8")
+
+    documents = loaders.load_documents_from_paths(
+        [present, unsupported, tmp_path / "gone.txt"]
+    )
+
+    assert [doc.page_content for doc in documents] == ["kept"]

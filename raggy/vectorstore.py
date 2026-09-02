@@ -4,6 +4,8 @@ import logging
 import math
 import shutil
 import sys
+from collections.abc import Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import bm25s
@@ -15,9 +17,40 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from tqdm import tqdm
 
 from .bm25_retriever import BM25_INDEX_DIRNAME, METADATA_FILENAME
-from .loaders import SUPPORTED_EXTENSIONS, load_documents_from_sources
+from .loaders import (
+    SUPPORTED_EXTENSIONS,
+    load_documents_from_paths,
+    load_documents_from_sources,
+)
 
 logger = logging.getLogger(__name__)
+
+MANIFEST_FILENAME = "manifest.yaml"
+
+# Manifest keys whose change invalidates every stored embedding, so the DB can
+# only be rebuilt from scratch. Everything else (which files exist and what
+# they contain) is reconciled file-by-file.
+_REBUILD_KEYS = ("chunk_size", "chunk_overlap", "embedding_model")
+
+
+@dataclass(frozen=True)
+class IndexPlan:
+    """What must happen to bring the DB in line with the current sources.
+
+    ``full_rebuild`` means every stored embedding is invalid (no manifest, or a
+    chunking/embedding-model change), so the persist dir is wiped and rebuilt.
+    Otherwise the three file lists describe an incremental update.
+    """
+
+    full_rebuild: bool = False
+    added: list[str] = field(default_factory=list)
+    modified: list[str] = field(default_factory=list)
+    removed: list[str] = field(default_factory=list)
+
+    @property
+    def has_changes(self) -> bool:
+        """True if the DB is out of date in any way."""
+        return bool(self.full_rebuild or self.added or self.modified or self.removed)
 
 
 def annotate_line_numbers(splits: list[Document], content: str) -> None:
@@ -98,43 +131,25 @@ def _save_bm25_index(splits: list[Document], persist_directory: str) -> None:
     entries are aligned by index with the per-chunk metadata so the
     ``Bm25sRetriever`` can reconstruct the original ``Document``s.
     """
+    index_dir = Path(persist_directory) / BM25_INDEX_DIRNAME
+    if not splits:
+        # An empty corpus can't be indexed; drop the old index rather than
+        # leaving one that would keep returning removed chunks.
+        shutil.rmtree(index_dir, ignore_errors=True)
+        return
     corpus = [split.page_content for split in splits]
     bm25 = bm25s.BM25()
     bm25.index(bm25s.tokenize(corpus, show_progress=False))
-    index_dir = Path(persist_directory) / BM25_INDEX_DIRNAME
     index_dir.mkdir(parents=True, exist_ok=True)
     bm25.save(str(index_dir), corpus=corpus, show_progress=False)
     metadata = [dict(split.metadata) for split in splits]
     (index_dir / METADATA_FILENAME).write_text(json.dumps(metadata), encoding="utf-8")
 
 
-def ingest_document(
-    sources: list[str],
-    vectorstore: Chroma,  # Assuming Chroma is imported in your actual file
-    chunk_size: int,
-    chunk_overlap: int,
-    batch_size: int,
-    persist_directory: str,
-) -> None:
-    """Loads, splits, and embeds documents into the vector store in batches.
-
-    Each entry in ``sources`` may point to a single supported file (e.g.
-    .txt/.md/.pdf/.docx/.pptx/.html/.png) or to a directory containing multiple
-    supported files.
-
-    Chunks are grouped into batches of up to ``batch_size`` chunks. The number
-    of batches is derived dynamically from the total chunk count, so the setting
-    stays sensible regardless of dataset size.
-
-    Also builds a BM25 index over the same chunks and persists it to
-    ``<persist_directory>/bm25_index/`` for hybrid retrieval.
-    """
-    docs = load_documents_from_sources(sources)
-
-    if not docs:
-        logger.warning("No documents found to index.")
-        return
-
+def _split_documents(
+    docs: list[Document], chunk_size: int, chunk_overlap: int
+) -> list[Document]:
+    """Split loaded documents into overlapping chunks, annotating line numbers."""
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
@@ -145,16 +160,18 @@ def ingest_document(
         if _should_annotate_lines(doc):
             annotate_line_numbers(doc_splits, doc.page_content)
         splits.extend(doc_splits)
+    return splits
+
+
+def _embed_in_batches(
+    splits: list[Document], vectorstore: Chroma, batch_size: int
+) -> None:
+    """Embed ``splits`` into Chroma in batches of at most ``batch_size`` chunks.
+
+    The number of batches is derived dynamically from the total chunk count, so
+    the setting stays sensible regardless of dataset size.
+    """
     total_splits = len(splits)
-    logger.info("Split text into %d chunks.", total_splits)
-
-    if not total_splits:
-        logger.warning("No content found to split and index.")
-        return
-
-    # Group splits into batches of at most ``batch_size`` chunks. The number of
-    # batches is computed from the total chunk count so it adapts to the dataset
-    # size: small datasets embed in a handful of batches, large ones in many.
     n_batches = math.ceil(total_splits / batch_size)
     batch_sizes = [
         min(batch_size, total_splits - i * batch_size) for i in range(n_batches)
@@ -166,82 +183,191 @@ def ingest_document(
         batch_size,
     )
 
-    all_splits = list(splits)
+    remaining = list(splits)
     for size in tqdm(
         batch_sizes,
         total=n_batches,
         desc="Indexing Batches",
         disable=not sys.stderr.isatty(),
     ):
-        batch = splits[:size]
-        splits = splits[size:]
+        batch = remaining[:size]
+        remaining = remaining[size:]
         vectorstore.add_documents(batch)
 
-    _save_bm25_index(all_splits, persist_directory)
+
+def create_index(
+    sources: list[str],
+    vectorstore: Chroma,
+    chunk_size: int,
+    chunk_overlap: int,
+    batch_size: int,
+    persist_directory: str,
+) -> None:
+    """Build the index from scratch: load, split, and embed every source file.
+
+    The full-build counterpart to ``update_index``, which applies only the
+    changed files to an index that already exists.
+
+    Each entry in ``sources`` may point to a single supported file (e.g.
+    .txt/.md/.pdf/.docx/.pptx/.html/.png) or to a directory containing multiple
+    supported files.
+
+    Also builds a BM25 index over the same chunks and persists it to
+    ``<persist_directory>/bm25_index/`` for hybrid retrieval.
+    """
+    docs = load_documents_from_sources(sources)
+
+    if not docs:
+        logger.warning("No documents found to index.")
+        return
+
+    splits = _split_documents(docs, chunk_size, chunk_overlap)
+    logger.info("Split text into %d chunks.", len(splits))
+
+    if not splits:
+        logger.warning("No content found to split and index.")
+        return
+
+    _embed_in_batches(splits, vectorstore, batch_size)
+    _save_bm25_index(splits, persist_directory)
 
 
+# Chroma binds one SQL variable per returned row, and SQLite caps a statement
+# at 32766 of them, so an unpaged get() over a large collection fails with
+# "too many SQL variables". Read the corpus back one page at a time instead.
+_COLLECTION_PAGE_SIZE = 10000
+
+
+def _collection_chunks(vectorstore: Chroma) -> list[Document]:
+    """Return every chunk currently stored in Chroma as a ``Document``.
+
+    Reading the stored text back (rather than re-splitting the corpus) is what
+    lets the BM25 index be rebuilt after an incremental update without
+    touching files that did not change.
+    """
+    chunks: list[Document] = []
+    offset = 0
+    while True:
+        stored = vectorstore._collection.get(
+            include=["documents", "metadatas"],
+            limit=_COLLECTION_PAGE_SIZE,
+            offset=offset,
+        )
+        documents = stored.get("documents") or []
+        metadatas = stored.get("metadatas") or []
+        chunks.extend(
+            Document(page_content=text, metadata=dict(metadata or {}))
+            for text, metadata in zip(documents, metadatas)
+        )
+        if len(documents) < _COLLECTION_PAGE_SIZE:
+            return chunks
+        offset += len(documents)
+
+
+def _delete_chunks_for_files(vectorstore: Chroma, files: list[str]) -> None:
+    """Delete every stored chunk whose ``source`` metadata is one of ``files``."""
+    if not files:
+        return
+    vectorstore._collection.delete(where={"source": {"$in": files}})
+
+
+def update_index(
+    vectorstore: Chroma,
+    plan: IndexPlan,
+    chunk_size: int,
+    chunk_overlap: int,
+    batch_size: int,
+    persist_directory: str,
+) -> None:
+    """Apply ``plan`` to an existing DB without re-embedding untouched files.
+
+    Chunks belonging to removed or modified files are deleted from Chroma,
+    then added and modified files are re-loaded, split, and embedded. The BM25
+    index has no incremental update path, so it is rebuilt from the chunks now
+    stored in Chroma — cheap, since that requires no embedding calls.
+    """
+    stale = plan.removed + plan.modified
+    if stale:
+        logger.info("Removing chunks for %d changed/deleted file(s).", len(stale))
+        _delete_chunks_for_files(vectorstore, stale)
+
+    reindexed = plan.added + plan.modified
+    if reindexed:
+        logger.info("Indexing %d new/changed file(s).", len(reindexed))
+        docs = load_documents_from_paths([Path(path) for path in reindexed])
+        splits = _split_documents(docs, chunk_size, chunk_overlap)
+        if splits:
+            _embed_in_batches(splits, vectorstore, batch_size)
+        else:
+            logger.warning("No content found in the new/changed files.")
+
+    _save_bm25_index(_collection_chunks(vectorstore), persist_directory)
+
+
+# Read in 1 MiB blocks rather than slurping whole files: the corpus can
+# include large PDFs/images, and every file is hashed on each pipeline start.
+# (hashlib.file_digest would replace this loop, but it needs Python 3.11.)
 _HASH_BLOCK_SIZE = 1048576
 
 
-def _file_fingerprint(sources: list[str], block_size: int = _HASH_BLOCK_SIZE) -> str:
-    """Return a content-based fingerprint of the source file set.
+def _hash_file(path: Path) -> str:
+    """Return the SHA-256 digest of a file's contents."""
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while True:
+            block = f.read(_HASH_BLOCK_SIZE)
+            if not block:
+                break
+            h.update(block)
+    return h.hexdigest()
 
-    Walks each entry in ``sources`` the same way ``load_documents`` indexes it
-    and folds each supported file's (relative path, content hash) into a single
-    digest. Hashing per-file (rather than a single concatenated blob) also
-    catches file additions, deletions, and renames, not just content edits.
-    Cheap enough to run on every pipeline start.
+
+def _iter_source_files(sources: list[str]) -> Iterator[Path]:
+    """Yield every supported file under ``sources``, in indexing order.
+
+    Walks each entry exactly the way ``load_documents`` indexes it, so the
+    paths yielded here are the same strings the loaders write into each
+    chunk's ``source`` metadata.
     """
-
-    def _hash_file(path: Path) -> str:
-        h = hashlib.sha256()
-        with path.open("rb") as f:
-            while True:
-                block = f.read(block_size)
-                if not block:
-                    break
-                h.update(block)
-        return h.hexdigest()
-
-    raw = []
     seen: set[Path] = set()
     for source in sources:
         root = Path(source)
         if not root.exists():
             raise FileNotFoundError(f"Source document not found at: {source}")
 
-        if root.is_dir():
-            for file_path in sorted(root.rglob("*")):
-                if (
-                    not file_path.is_file()
-                    or file_path.suffix.lower() not in SUPPORTED_EXTENSIONS
-                ):
-                    continue
-                if file_path.resolve() in seen:
-                    continue
-                seen.add(file_path.resolve())
-                try:
-                    raw.append(
-                        f"{file_path.relative_to(root)!s}:{_hash_file(file_path)}"
-                    )
-                except OSError:
-                    continue
-        elif root.suffix.lower() in SUPPORTED_EXTENSIONS:
-            if root.resolve() in seen:
+        candidates = sorted(root.rglob("*")) if root.is_dir() else [root]
+        for file_path in candidates:
+            if root.is_dir() and not file_path.is_file():
                 continue
-            seen.add(root.resolve())
-            raw.append(f"{root.name}:{_hash_file(root)}")
+            if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                continue
+            resolved = file_path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            yield file_path
 
-    raw.sort()
-    digest = hashlib.sha256()
-    for entry in raw:
-        digest.update(entry.encode("utf-8"))
-    return digest.hexdigest()
+
+def file_fingerprints(sources: list[str]) -> dict[str, str]:
+    """Return a ``{file path: content hash}`` map of the source file set.
+
+    Hashing per file (rather than folding everything into one digest) is what
+    makes incremental indexing possible: comparing this map against the one in
+    the manifest names exactly which files were added, modified, or deleted.
+    Cheap enough to run on every pipeline start.
+    """
+    fingerprints: dict[str, str] = {}
+    for file_path in _iter_source_files(sources):
+        try:
+            fingerprints[str(file_path)] = _hash_file(file_path)
+        except OSError:
+            continue
+    return fingerprints
 
 
 def _load_manifest(persist_directory: str) -> dict | None:
     """Read the build manifest (if any) from the DB directory."""
-    manifest_path = Path(persist_directory) / "manifest.yaml"
+    manifest_path = Path(persist_directory) / MANIFEST_FILENAME
     if not manifest_path.exists():
         return None
     return yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
@@ -250,7 +376,7 @@ def _load_manifest(persist_directory: str) -> dict | None:
 def _write_manifest(persist_directory: str, index_cfg: dict) -> None:
     """Persist the index-affecting config so later runs can detect drift."""
     Path(persist_directory).mkdir(parents=True, exist_ok=True)
-    manifest_path = Path(persist_directory) / "manifest.yaml"
+    manifest_path = Path(persist_directory) / MANIFEST_FILENAME
     manifest_path.write_text(yaml.safe_dump(index_cfg), encoding="utf-8")
 
 
@@ -277,24 +403,58 @@ def build_index_config(
     chunk_overlap: int,
     embedding_model: str,
 ) -> dict:
-    """Build the index-affecting config (including a fresh content fingerprint).
+    """Build the index-affecting config (including fresh per-file fingerprints).
 
     The returned dict is compared against the persisted ``manifest.yaml`` to
-    decide whether the DB must be rebuilt from source.
+    decide whether the DB is stale and, if so, which files need re-indexing.
     """
     return {
         "sources": list(sources),
         "chunk_size": int(chunk_size),
         "chunk_overlap": int(chunk_overlap),
         "embedding_model": embedding_model,
-        "content_hash": _file_fingerprint(sources),
+        "files": file_fingerprints(sources),
     }
 
 
+def plan_index_update(persist_directory: str, index_cfg: dict) -> IndexPlan:
+    """Diff the current index config against the stored manifest.
+
+    A missing manifest, a manifest without per-file fingerprints (written by an
+    older version), or a change to chunking/embedding settings forces a full
+    rebuild. Everything else is reduced to the set of files that were added,
+    modified, or deleted since the last build.
+    """
+    stored = _load_manifest(persist_directory)
+    if stored is None:
+        return IndexPlan(full_rebuild=True)
+
+    if any(stored.get(key) != index_cfg[key] for key in _REBUILD_KEYS):
+        return IndexPlan(full_rebuild=True)
+
+    stored_files = stored.get("files")
+    if not isinstance(stored_files, dict):
+        return IndexPlan(full_rebuild=True)
+
+    current_files = index_cfg["files"]
+    return IndexPlan(
+        added=sorted(set(current_files) - set(stored_files)),
+        modified=sorted(
+            path
+            for path, digest in current_files.items()
+            if path in stored_files and stored_files[path] != digest
+        ),
+        removed=sorted(set(stored_files) - set(current_files)),
+    )
+
+
 def db_needs_rebuild(persist_directory: str, index_cfg: dict) -> bool:
-    """Return True if the stored manifest differs from the current index config."""
-    stored_manifest = _load_manifest(persist_directory)
-    return stored_manifest is None or stored_manifest != index_cfg
+    """Return True if the stored manifest no longer matches the current sources.
+
+    Covers both kinds of staleness (full rebuild and incremental update); use
+    ``plan_index_update`` when the distinction matters.
+    """
+    return plan_index_update(persist_directory, index_cfg).has_changes
 
 
 def initialize_db(
@@ -307,19 +467,21 @@ def initialize_db(
 ) -> Chroma:
     """
     Initializes the Chroma database.
-    If the database is empty, or the index-affecting config no longer matches
-    the persisted manifest.yaml, the persist directory is wiped and the docs
-    are re-indexed from scratch.
-    """
-    # Config that determines the index content; only these drive rebuilds.
-    index_cfg = build_index_config(sources, chunk_size, chunk_overlap, embedding_model)
-    config_changed = db_needs_rebuild(persist_directory, index_cfg)
 
-    if config_changed:
+    If the database is empty, or ``chunk_size``/``chunk_overlap``/
+    ``embedding_model`` no longer match the persisted manifest.yaml, the
+    persist directory is wiped and the docs are re-indexed from scratch. If
+    only the source files changed, the DB is updated incrementally: just the
+    added and modified files are embedded and the removed ones dropped.
+    """
+    # Config that determines the index content; only these drive re-indexing.
+    index_cfg = build_index_config(sources, chunk_size, chunk_overlap, embedding_model)
+    plan = plan_index_update(persist_directory, index_cfg)
+
+    if plan.full_rebuild:
         logger.info(
-            "Detected configuration or source content change "
-            "(sources, chunk_size, chunk_overlap, embedding_model, "
-            "or docs content); rebuilding DB from source documents."
+            "Detected an index config change (chunk_size, chunk_overlap, or "
+            "embedding_model); rebuilding DB from source documents."
         )
         # Wipe the persist dir BEFORE opening any Chroma connection. Deleting
         # the sqlite files while a client holds an open handle leaves a stale
@@ -330,8 +492,8 @@ def initialize_db(
     vectorstore = get_vectorstore(persist_directory, embedding_model)
     collection_count = vectorstore._collection.count()
 
-    if collection_count == 0 or config_changed:
-        ingest_document(
+    if plan.full_rebuild or collection_count == 0:
+        create_index(
             sources=sources,
             vectorstore=vectorstore,
             chunk_size=chunk_size,
@@ -340,14 +502,26 @@ def initialize_db(
             persist_directory=persist_directory,
         )
         _write_manifest(persist_directory, index_cfg)
+        logger.info("Successfully saved DB to '%s'.", persist_directory)
+    elif plan.has_changes:
         logger.info(
-            "Successfully saved DB to '%s'.",
-            persist_directory,
+            "Detected source changes (%d added, %d modified, %d deleted); "
+            "updating DB incrementally.",
+            len(plan.added),
+            len(plan.modified),
+            len(plan.removed),
         )
+        update_index(
+            vectorstore=vectorstore,
+            plan=plan,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            batch_size=batch_size,
+            persist_directory=persist_directory,
+        )
+        _write_manifest(persist_directory, index_cfg)
+        logger.info("Successfully updated DB in '%s'.", persist_directory)
     else:
-        logger.info(
-            "Loaded existing vector DB from '%s'.",
-            persist_directory,
-        )
+        logger.info("Loaded existing vector DB from '%s'.", persist_directory)
 
     return vectorstore
