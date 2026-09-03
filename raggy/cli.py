@@ -1,5 +1,6 @@
 """Interactive chat CLI for raggy, built on `rich` for a minimalist look."""
 
+import argparse
 import logging
 import readline  # noqa: F401  enables arrow-key editing/history in input()
 import textwrap
@@ -216,7 +217,11 @@ def _report_error(exc: Exception) -> None:
         console.print(f"[{ACCENT}]{hint}[/{ACCENT}]")
 
 
-def _run_turn(query: str, chat_history: list[tuple[str, str]]) -> None:
+def _run_turn(
+    query: str,
+    chat_history: list[tuple[str, str]],
+    config_path: str = "config.yaml",
+) -> None:
     """Answer one query, printing the answer and its citations. Never raises.
 
     Every failure is contained in the turn that caused it. Most causes are
@@ -231,7 +236,7 @@ def _run_turn(query: str, chat_history: list[tuple[str, str]]) -> None:
     """
     doc_sink: list = []
     try:
-        cfg = load_config()
+        cfg = load_config(config_path)
         with _ProgressLine() as progress:
             # Pulled here rather than left to the pipeline: a first run
             # downloads gigabytes, and the download belongs on the status line
@@ -243,10 +248,14 @@ def _run_turn(query: str, chat_history: list[tuple[str, str]]) -> None:
                 on_stale=lambda: console.print(
                     f"[{ACCENT}]DB needs updating...[/{ACCENT}]"
                 ),
+                config_path=config_path,
             )
         with console.status(f"[{STATUS_ACCENT}]Retrieving...[/{STATUS_ACCENT}]"):
             stream = run_pipeline_stream(
-                query, doc_sink=doc_sink, chat_history=chat_history
+                query,
+                doc_sink=doc_sink,
+                chat_history=chat_history,
+                config_path=config_path,
             )
             first_chunk = next(stream)
     except StopIteration:
@@ -292,12 +301,12 @@ def _run_turn(query: str, chat_history: list[tuple[str, str]]) -> None:
         del chat_history[: -MEMORY_TURNS * 2]
 
 
-def run_chat() -> None:
+def run_chat(config_path: str = "config.yaml") -> None:
     console.print(
         Panel.fit(
             f"[{ACCENT}]{LOGO}[/{ACCENT}]\n\n"
             "Specify source folders/files and other parameters in "
-            "[bold]config.yaml[/bold]\n\n"
+            f"[bold]{config_path}[/bold]\n\n"
             "[bold]/clear[/bold] to reset the conversation memory\n"
             "[bold]/exit[/bold] to leave",
             border_style=ACCENT,
@@ -308,7 +317,7 @@ def run_chat() -> None:
     # The only unrecoverable failure: without a valid config there is nothing to
     # answer from, so fail here rather than on every question the user types.
     try:
-        load_config()
+        load_config(config_path)
     except Exception as e:  # noqa: BLE001
         _report_error(e)
         return
@@ -335,14 +344,28 @@ def run_chat() -> None:
         if not query:
             continue
 
-        _run_turn(query, chat_history)
+        _run_turn(query, chat_history, config_path)
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="raggy", description="Interactive chat CLI for raggy."
+    )
+    parser.add_argument(
+        "--config",
+        default="config.yaml",
+        metavar="PATH",
+        help="path to the config file (default: config.yaml in the working directory)",
+    )
+    return parser.parse_args(argv)
 
 
 def main() -> None:
+    args = _parse_args()
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
     logging.getLogger("raggy").setLevel(logging.WARNING)
     # bm25s raises its own logger to DEBUG at import time, so the root level
     # set above does not gate it: without this, every BM25 index build prints
     # "DEBUG: Building index from IDs objects" into the chat.
     logging.getLogger("bm25s").setLevel(logging.WARNING)
-    run_chat()
+    run_chat(args.config)

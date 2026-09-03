@@ -4,6 +4,11 @@ Score each QA pair in ``eval/qa.json`` on retrieval quality (hit rate, MRR,
 recall@k) and generation quality (BLEU-1, ROUGE-L, embedding similarity, and an
 LLM-as-judge verdict from the configured provider). Embeddings are local (Ollama).
 
+``qa.json`` asks about the documents in ``sample_docs``, so the harness runs
+against ``default_config/default_config.yaml`` (which points there) rather than
+the user's own ``config.yaml``. Its relative paths resolve against the working
+directory, so run this from the repo root:
+
 Run with:  uv run eval/run_eval.py
 """
 
@@ -30,7 +35,7 @@ logger = logging.getLogger(__name__)
 EVAL_DIR = Path(__file__).resolve().parent
 QA_PATH = EVAL_DIR / "qa.json"
 RESULTS_PATH = EVAL_DIR / "results.json"
-CONFIG_PATH = EVAL_DIR.parent / "config.yaml"
+CONFIG_PATH = EVAL_DIR.parent / "default_config" / "default_config.yaml"
 
 _cfg = load_config(str(CONFIG_PATH))
 
@@ -247,7 +252,7 @@ def main() -> None:
 
         logger.info(">>> [%s] %s", qid, question)
         try:
-            answer, docs = run_pipeline(question)
+            answer, docs = run_pipeline(question, config_path=str(CONFIG_PATH))
             logger.info("    ANSWER [%s]: %s", qid, answer)
         except Exception as e:  # noqa: BLE001
             logger.warning("FAILED [%s]: %s", qid, e)

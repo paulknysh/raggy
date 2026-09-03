@@ -7,7 +7,7 @@
 - Lint + Format + Test: `make sure`
 
 ## Runtime prerequisites (not mocked in tests)
-- `config.yaml` must exist in the working directory (single source of truth, validated in `raggy/raggy.py:load_config`).
+- `config.yaml` must exist in the working directory (single source of truth, validated in `raggy/raggy.py:load_config`); another path can be selected with `raggy --config PATH`, which is threaded through as the `config_path` argument of `run_pipeline`/`run_pipeline_stream`/`refresh_db`/`_init_db`.
 - Ollama service running with the embedding model named in `config.yaml` (`nomic-embed-text`) — always required because embeddings are local. The generation LLM is local (`phi4-mini`) when `llm_provider: ollama`, or a remote API when `llm_provider: openai|anthropic|google`. Tests mock all Ollama/Chroma/provider I/O — never require a live service in tests.
 
 ## Architecture

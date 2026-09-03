@@ -1,5 +1,6 @@
 import io
 import logging
+import sys
 from types import SimpleNamespace
 from typing import ClassVar
 
@@ -20,11 +21,9 @@ def captured_console(monkeypatch):
 @pytest.fixture
 def stub_config(monkeypatch):
     """Make config loading, model pulls, and DB refresh no-ops for the chat loop."""
-    monkeypatch.setattr(cli, "load_config", lambda: {"stub": True})
+    monkeypatch.setattr(cli, "load_config", lambda *a, **k: {"stub": True})
     monkeypatch.setattr(cli, "ensure_models", lambda cfg, progress=None: None)
-    monkeypatch.setattr(
-        cli, "refresh_db", lambda cfg, progress=None, on_stale=None: False
-    )
+    monkeypatch.setattr(cli, "refresh_db", lambda cfg, **kwargs: False)
 
 
 def _output(console) -> str:
@@ -45,7 +44,7 @@ def _doc(name="a.pdf", text="chunk text"):
 def test_successful_turn_prints_answer_and_citations(
     monkeypatch, captured_console, stub_config
 ):
-    def fake_stream(query, doc_sink=None, chat_history=None):
+    def fake_stream(query, doc_sink=None, chat_history=None, **kwargs):
         doc_sink.append([_doc()])
         yield "the answer"
 
@@ -64,7 +63,7 @@ def test_failed_turn_does_not_end_the_session(
 ):
     asked = []
 
-    def fake_stream(query, doc_sink=None, chat_history=None):
+    def fake_stream(query, doc_sink=None, chat_history=None, **kwargs):
         asked.append(query)
         if query == "boom":
             raise RuntimeError("the provider exploded")
@@ -86,7 +85,7 @@ def test_failed_turn_keeps_memory_but_records_nothing(
 ):
     histories = []
 
-    def fake_stream(query, doc_sink=None, chat_history=None):
+    def fake_stream(query, doc_sink=None, chat_history=None, **kwargs):
         histories.append(list(chat_history))
         if query == "boom":
             raise RuntimeError("nope")
@@ -109,7 +108,7 @@ def test_midstream_failure_keeps_partial_answer_and_citations(
 ):
     histories = []
 
-    def fake_stream(query, doc_sink=None, chat_history=None):
+    def fake_stream(query, doc_sink=None, chat_history=None, **kwargs):
         histories.append(list(chat_history))
         if query == "half":
             doc_sink.append([_doc()])
@@ -132,7 +131,7 @@ def test_midstream_failure_keeps_partial_answer_and_citations(
 def test_empty_stream_reports_a_clear_message(
     monkeypatch, captured_console, stub_config
 ):
-    def fake_stream(query, doc_sink=None, chat_history=None):
+    def fake_stream(query, doc_sink=None, chat_history=None, **kwargs):
         yield from ()
 
     monkeypatch.setattr(cli, "run_pipeline_stream", fake_stream)
@@ -148,7 +147,7 @@ def test_interrupt_during_retrieval_cancels_only_that_turn(
 ):
     asked = []
 
-    def fake_stream(query, doc_sink=None, chat_history=None):
+    def fake_stream(query, doc_sink=None, chat_history=None, **kwargs):
         asked.append(query)
         if query == "slow":
             raise KeyboardInterrupt
@@ -166,7 +165,7 @@ def test_interrupt_during_retrieval_cancels_only_that_turn(
 def test_connection_failure_suggests_starting_ollama(
     monkeypatch, captured_console, stub_config
 ):
-    def fake_stream(query, doc_sink=None, chat_history=None):
+    def fake_stream(query, doc_sink=None, chat_history=None, **kwargs):
         raise RuntimeError("[Errno 61] Connection refused")
         yield  # pragma: no cover  keeps this a generator function
 
@@ -179,7 +178,7 @@ def test_connection_failure_suggests_starting_ollama(
 
 
 def test_invalid_config_exits_before_prompting(monkeypatch, captured_console):
-    def broken_config():
+    def broken_config(*args, **kwargs):
         raise ValueError("chunk_overlap must be smaller than chunk_size")
 
     def fail_if_asked(prompt):
@@ -228,16 +227,16 @@ def test_indexing_progress_is_reported_on_one_line(monkeypatch, status_lines):
     """Indexing reports into a single status line, closed before retrieval."""
     forwarded = []
 
-    def fake_refresh_db(cfg, progress=None, on_stale=None):
+    def fake_refresh_db(cfg, progress=None, on_stale=None, **kwargs):
         forwarded.append(progress)
         progress("[1/2] ingesting a.pdf ...")
         progress("[2/2] ingesting b.pdf ...")
         return True
 
-    def fake_stream(query, doc_sink=None, chat_history=None):
+    def fake_stream(query, doc_sink=None, chat_history=None, **kwargs):
         yield "the answer"
 
-    monkeypatch.setattr(cli, "load_config", lambda: {"stub": True})
+    monkeypatch.setattr(cli, "load_config", lambda *a, **k: {"stub": True})
     monkeypatch.setattr(cli, "ensure_models", lambda cfg, progress=None: None)
     monkeypatch.setattr(cli, "refresh_db", fake_refresh_db)
     monkeypatch.setattr(cli, "run_pipeline_stream", fake_stream)
@@ -257,14 +256,12 @@ def test_indexing_progress_is_reported_on_one_line(monkeypatch, status_lines):
 def test_no_progress_line_when_nothing_is_indexed(monkeypatch, status_lines):
     """A session whose DB is already current never starts the status display."""
 
-    def fake_stream(query, doc_sink=None, chat_history=None):
+    def fake_stream(query, doc_sink=None, chat_history=None, **kwargs):
         yield "the answer"
 
-    monkeypatch.setattr(cli, "load_config", lambda: {"stub": True})
+    monkeypatch.setattr(cli, "load_config", lambda *a, **k: {"stub": True})
     monkeypatch.setattr(cli, "ensure_models", lambda cfg, progress=None: None)
-    monkeypatch.setattr(
-        cli, "refresh_db", lambda cfg, progress=None, on_stale=None: False
-    )
+    monkeypatch.setattr(cli, "refresh_db", lambda cfg, **kwargs: False)
     monkeypatch.setattr(cli, "run_pipeline_stream", fake_stream)
     _script_inputs(monkeypatch, "a question")
 
@@ -315,14 +312,14 @@ def test_model_pull_renders_a_download_bar(monkeypatch, status_lines, fake_bar):
         progress("pulling nomic-embed-text ...", 100, 274)
         progress("pulling nomic-embed-text ...", 274, 274)
 
-    def fake_refresh_db(cfg, progress=None, on_stale=None):
+    def fake_refresh_db(cfg, progress=None, on_stale=None, **kwargs):
         progress("[1/1] ingesting a.pdf ...")
         return True
 
-    def fake_stream(query, doc_sink=None, chat_history=None):
+    def fake_stream(query, doc_sink=None, chat_history=None, **kwargs):
         yield "the answer"
 
-    monkeypatch.setattr(cli, "load_config", lambda: {"stub": True})
+    monkeypatch.setattr(cli, "load_config", lambda *a, **k: {"stub": True})
     monkeypatch.setattr(cli, "ensure_models", fake_ensure_models)
     monkeypatch.setattr(cli, "refresh_db", fake_refresh_db)
     monkeypatch.setattr(cli, "run_pipeline_stream", fake_stream)
@@ -350,14 +347,14 @@ def test_stale_db_is_announced_before_and_after_the_update(
 ):
     """The wait is announced when it starts, not only when it ends."""
 
-    def fake_refresh_db(cfg, progress=None, on_stale=None):
+    def fake_refresh_db(cfg, progress=None, on_stale=None, **kwargs):
         on_stale()
         return True
 
-    def fake_stream(query, doc_sink=None, chat_history=None):
+    def fake_stream(query, doc_sink=None, chat_history=None, **kwargs):
         yield "the answer"
 
-    monkeypatch.setattr(cli, "load_config", lambda: {"stub": True})
+    monkeypatch.setattr(cli, "load_config", lambda *a, **k: {"stub": True})
     monkeypatch.setattr(cli, "ensure_models", lambda cfg, progress=None: None)
     monkeypatch.setattr(cli, "refresh_db", fake_refresh_db)
     monkeypatch.setattr(cli, "run_pipeline_stream", fake_stream)
@@ -371,7 +368,7 @@ def test_stale_db_is_announced_before_and_after_the_update(
 
 
 def test_current_db_announces_nothing(monkeypatch, captured_console, stub_config):
-    def fake_stream(query, doc_sink=None, chat_history=None):
+    def fake_stream(query, doc_sink=None, chat_history=None, **kwargs):
         yield "the answer"
 
     monkeypatch.setattr(cli, "run_pipeline_stream", fake_stream)
@@ -387,8 +384,58 @@ def test_current_db_announces_nothing(monkeypatch, captured_console, stub_config
 def test_main_silences_the_bm25s_debug_logger(monkeypatch):
     """bm25s sets its own logger to DEBUG at import; the CLI must undo that."""
     logging.getLogger("bm25s").setLevel(logging.DEBUG)
-    monkeypatch.setattr(cli, "run_chat", lambda: None)
+    monkeypatch.setattr(sys, "argv", ["raggy"])
+    monkeypatch.setattr(cli, "run_chat", lambda *args: None)
 
     cli.main()
 
     assert logging.getLogger("bm25s").level == logging.WARNING
+
+
+def test_config_flag_defaults_to_working_directory_config():
+    assert cli._parse_args([]).config == "config.yaml"
+
+
+def test_main_passes_the_config_flag_to_the_chat(monkeypatch):
+    seen = []
+    monkeypatch.setattr(sys, "argv", ["raggy", "--config", "/tmp/other.yaml"])
+    monkeypatch.setattr(cli, "run_chat", lambda config_path: seen.append(config_path))
+
+    cli.main()
+
+    assert seen == ["/tmp/other.yaml"]
+
+
+def test_turn_runs_against_the_given_config(monkeypatch, captured_console):
+    """Every config reader in a turn is pointed at the CLI's --config path."""
+    seen = {}
+
+    def fake_stream(query, doc_sink=None, chat_history=None, config_path=None):
+        seen["stream"] = config_path
+        yield "the answer"
+
+    monkeypatch.setattr(
+        cli, "load_config", lambda path="config.yaml": seen.setdefault("load", path)
+    )
+    monkeypatch.setattr(cli, "ensure_models", lambda cfg, progress=None: None)
+    monkeypatch.setattr(
+        cli,
+        "refresh_db",
+        lambda cfg, config_path=None, **kwargs: seen.setdefault("refresh", config_path),
+    )
+    monkeypatch.setattr(cli, "run_pipeline_stream", fake_stream)
+    _script_inputs(monkeypatch, "a question")
+
+    cli.run_chat("/tmp/other.yaml")
+
+    assert seen["load"] == "/tmp/other.yaml"
+    assert seen["refresh"] == "/tmp/other.yaml"
+    assert seen["stream"] == "/tmp/other.yaml"
+
+
+def test_banner_names_the_config_in_use(monkeypatch, captured_console, stub_config):
+    monkeypatch.setattr(cli, "_ask", lambda prompt: "/exit")
+
+    cli.run_chat("/tmp/other.yaml")
+
+    assert "/tmp/other.yaml" in _output(captured_console)

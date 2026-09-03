@@ -82,10 +82,16 @@ sources:
   - "/Users/xyz/Desktop/docs_2/abc.pdf" # file
 ```
 
-To start CLI type:
+To start CLI type (by default always uses `config.yaml` created inside repo):
 
 ```bash
 raggy
+```
+
+To run with a config file located elsewhere, pass `--config`:
+
+```bash
+raggy --config path/to/config.yaml
 ```
 
 **Important:** On the first run CLI automatically pulls Ollama models listed in `config.yaml` and indexes your
@@ -112,7 +118,9 @@ for i, doc in enumerate(retrieved_docs, 1):
 ## Configuration
 
 All runtime settings are read from `config.yaml` (the file must be present in the
-working directory when you run the `raggy` CLI or import the library):
+working directory when you run the `raggy` CLI or import the library, unless you
+point at another one with `raggy --config PATH` or the `config_path` argument of
+`run_pipeline`):
 
 | Setting | Description |
 | --- | --- |
@@ -149,7 +157,7 @@ To run the test, start the Ollama service with the embeddings always local and m
 uv run eval/run_eval.py
 ```
 
-It computes basic retrieval/generation metrics and produces a summary (both printed and saved to `eval/results.json`).
+It computes basic retrieval/generation metrics and produces a summary (both printed and saved to `eval/results.json`). The Q&A pairs are about `sample_docs`, so the harness always runs against `default_config/default_config.yaml` rather than your own `config.yaml`.
 
 
 ## The DB management

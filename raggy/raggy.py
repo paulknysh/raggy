@@ -64,8 +64,11 @@ def ensure_models(
         ensure_reranker_model(cfg["rerank_model"], progress=progress)
 
 
-def _init_db(progress: ProgressCallback | None = None) -> Chroma:
-    cfg = load_config()
+def _init_db(
+    progress: ProgressCallback | None = None,
+    config_path: str = "config.yaml",
+) -> Chroma:
+    cfg = load_config(config_path)
 
     # Embeddings are always local, so the (always-required) embedding model is
     # pulled up front before any embedding work begins.
@@ -87,10 +90,10 @@ def _init_db(progress: ProgressCallback | None = None) -> Chroma:
 _vectorstore: Chroma | None = None
 
 
-def _get_vectorstore() -> Chroma:
+def _get_vectorstore(config_path: str = "config.yaml") -> Chroma:
     global _vectorstore
     if _vectorstore is None:
-        _vectorstore = _init_db()
+        _vectorstore = _init_db(config_path=config_path)
     return _vectorstore
 
 
@@ -98,6 +101,7 @@ def refresh_db(
     cfg: dict[str, Any] | None = None,
     progress: ProgressCallback | None = None,
     on_stale: Callable[[], None] | None = None,
+    config_path: str = "config.yaml",
 ) -> bool:
     """Re-check the source docs and re-index the vector DB if they changed.
 
@@ -107,8 +111,9 @@ def refresh_db(
     DB was re-indexed (incrementally when only the source files changed, see
     :func:`raggy.indexing.initialize_db`).
 
-    Pass a pre-loaded ``cfg`` dict to avoid re-reading ``config.yaml``
-    (and re-hashing source files) when the caller already has it. ``progress``
+    Pass a pre-loaded ``cfg`` dict to avoid re-reading the config file (and
+    re-hashing source files) when the caller already has it; it must be the
+    config at ``config_path``, since a rebuild re-reads that file. ``progress``
     receives one status line per file ingested and per embedded batch, so a
     caller can show what the (slow) re-indexing is currently working on.
 
@@ -119,7 +124,7 @@ def refresh_db(
     """
     global _vectorstore
     if cfg is None:
-        cfg = load_config()
+        cfg = load_config(config_path)
     index_cfg = build_index_config(
         sources=cfg["sources"],
         chunk_size=cfg["chunk_size"],
@@ -135,11 +140,15 @@ def refresh_db(
     logger.info("Source documents or index config changed; re-indexing DB.")
     if _vectorstore is not None:
         close_vectorstore(_vectorstore)
-    _vectorstore = _init_db(progress)
+    _vectorstore = _init_db(progress, config_path)
     return True
 
 
-def run_pipeline(query: str, chat_history: list | None = None) -> tuple[Any, list[Any]]:
+def run_pipeline(
+    query: str,
+    chat_history: list | None = None,
+    config_path: str = "config.yaml",
+) -> tuple[Any, list[Any]]:
     """Run ``query`` through the RAG pipeline and return (answer, retrieved docs).
 
     ``chat_history`` optionally carries prior turns as ``("human"|"ai", content)``
@@ -151,9 +160,12 @@ def run_pipeline(query: str, chat_history: list | None = None) -> tuple[Any, lis
     missing provider API key, embedding failures, ...) propagate to the caller
     instead of terminating the process. CLI wrappers are responsible for
     catching and reporting them.
+
+    ``config_path`` selects the config file to run against (``config.yaml`` in
+    the working directory by default).
     """
-    cfg = load_config()
-    vectorstore = _get_vectorstore()
+    cfg = load_config(config_path)
+    vectorstore = _get_vectorstore(config_path)
 
     # Build the RAG chain and retrieve retriever. When generation is local,
     # ensure the configured LLM is present in Ollama before constructing it.
@@ -196,6 +208,7 @@ def run_pipeline_stream(
     query: str,
     doc_sink: list | None = None,
     chat_history: list | None = None,
+    config_path: str = "config.yaml",
 ) -> Iterator[str]:
     """Run ``query`` through the RAG pipeline, yielding answer text chunks.
 
@@ -204,10 +217,11 @@ def run_pipeline_stream(
     LLM saw is appended to ``doc_sink`` in a single pass (see
     ``build_rag_chain``); pass a list in and read ``doc_sink[-1]`` after
     consuming the stream. ``chat_history`` has the same meaning as in
-    ``run_pipeline``. Errors propagate to the caller.
+    ``run_pipeline``, and ``config_path`` the same meaning as there. Errors
+    propagate to the caller.
     """
-    cfg = load_config()
-    vectorstore = _get_vectorstore()
+    cfg = load_config(config_path)
+    vectorstore = _get_vectorstore(config_path)
 
     if cfg["llm_provider"] == "ollama":
         ensure_ollama_model(cfg["llm_model"])
