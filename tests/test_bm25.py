@@ -1,6 +1,6 @@
 from langchain_core.documents import Document
 
-from raggy.bm25_retriever import (
+from raggy.bm25 import (
     BM25_INDEX_DIRNAME,
     METADATA_FILENAME,
     get_bm25_retriever,

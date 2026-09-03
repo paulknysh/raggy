@@ -218,6 +218,19 @@ def should_annotate_lines(doc: Document) -> bool:
     return suffix in LINE_ANNOTATED_EXTENSIONS
 
 
+def source_label(doc) -> str:
+    """Build a human-readable source location for a retrieved document."""
+    meta = doc.metadata
+    parts = [Path(meta.get("source", "unknown")).name]
+
+    if "page" in meta:
+        parts.append(f"page {meta['page']}")
+    if "start_line" in meta:
+        parts.append(f"lines {meta['start_line']}-{meta['end_line']}")
+
+    return ", ".join(parts)
+
+
 def _walk_source(root: Path, skipped: list[Path]) -> Iterator[Path]:
     """Yield the supported files one source entry contributes, in load order."""
     if root.is_dir():

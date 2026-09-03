@@ -1,19 +1,24 @@
+from collections.abc import Sequence
+
 from langchain_chroma import Chroma
 from langchain_classic.retrievers import (
     ContextualCompressionRetriever,
     EnsembleRetriever,
 )
-from langchain_core.documents import Document
+from langchain_core.cross_encoders import BaseCrossEncoder
+from langchain_core.documents import BaseDocumentCompressor, Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable, RunnableLambda, RunnablePassthrough
+from pydantic import ConfigDict
 
-from .bm25_retriever import get_bm25_retriever
+from .bm25 import get_bm25_retriever
 from .llm_factory import get_llm
 from .reranker import get_cross_encoder
-from .score_filter import ScoreAnnotatingReranker, filter_by_score_threshold
 
 _ROLE_LABELS = {"human": "User", "ai": "Assistant", "system": "System"}
+
+SCORE_KEY = "relevance_score"
 
 _CONDENSE_PROMPT = ChatPromptTemplate.from_messages(
     [
@@ -58,6 +63,50 @@ def condense_question(chat_history: list[tuple[str, str]], question: str, llm) -
     )
     condensed = StrOutputParser().invoke(llm.invoke(messages)).strip()
     return condensed or question
+
+
+class ScoreAnnotatingReranker(BaseDocumentCompressor):
+    """Cross-encoder reranker that keeps each chunk's relevance score.
+
+    Behaves like LangChain's ``CrossEncoderReranker`` (score, sort descending,
+    take the top ``top_n``) but additionally writes the score into
+    ``doc.metadata[SCORE_KEY]`` for every returned chunk. The stock reranker
+    discards the scores once it has selected the top-k, so annotating them is
+    what lets :func:`filter_by_score_threshold` drop the low-scoring tail
+    before the final generation step.
+    """
+
+    model: BaseCrossEncoder
+    top_n: int = 3
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+    def compress_documents(
+        self,
+        documents: Sequence[Document],
+        query: str,
+        callbacks=None,
+    ) -> Sequence[Document]:
+        """Score each (query, chunk) pair, annotate, keep the top ``top_n``."""
+        scores = self.model.score([(query, doc.page_content) for doc in documents])
+        for doc, score in zip(documents, scores):
+            doc.metadata[SCORE_KEY] = float(score)
+        ranked = sorted(zip(documents, scores), key=lambda x: x[1], reverse=True)
+        return [doc for doc, _ in ranked[: self.top_n]]
+
+
+def filter_by_score_threshold(
+    docs: list[Document], threshold: float | None
+) -> list[Document]:
+    """Keep only chunks whose reranker score is at or above ``threshold``.
+
+    Documents without a stored score (e.g. reranking was disabled) are kept,
+    so this is fail-open. A ``threshold`` of ``None`` or ``<= 0`` disables the
+    filter entirely and returns ``docs`` unchanged. Order is preserved.
+    """
+    if not threshold or threshold <= 0:
+        return docs
+    return [d for d in docs if d.metadata.get(SCORE_KEY, float("inf")) >= threshold]
 
 
 def get_retriever(
@@ -150,8 +199,9 @@ def build_rag_chain(
     Returns a tuple containing (rag_chain, retriever).
 
     When ``rerank_threshold`` is above 0 the cross-encoder's relevance score
-    (see :mod:`raggy.score_filter`) is used to drop any reranked chunk
-    scoring below the threshold before the prompt; it is off by default. The
+    (stamped on each chunk by :class:`ScoreAnnotatingReranker`) is used to drop
+    any reranked chunk scoring below the threshold before the prompt; it is off
+    by default. The
     surviving Documents are captured in a single pass and appended to
     ``doc_sink`` (if provided), so callers can inspect exactly what the LLM
     saw without running the retriever a second time.

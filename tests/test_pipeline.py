@@ -1,8 +1,11 @@
 from types import SimpleNamespace
 
 import pytest
+from langchain_core.cross_encoders import BaseCrossEncoder
+from langchain_core.documents import Document
 
 from raggy import pipeline
+from raggy.pipeline import SCORE_KEY
 
 
 def _message_contents(messages):
@@ -48,6 +51,18 @@ class FakeLLM:
                     messages.append(m)
             return messages
         return prompt_input
+
+
+class FakeModel(BaseCrossEncoder):
+    def __init__(self, scores):
+        self.scores = scores
+
+    def score(self, pairs):
+        return self.scores
+
+
+def _docs(*contents):
+    return [Document(page_content=c) for c in contents]
 
 
 def test_get_retriever_uses_vectorstore_configuration():
@@ -325,3 +340,52 @@ def test_build_rag_chain_applies_score_threshold(monkeypatch):
     chain.invoke({"question": "plain", "chat_history": []})
 
     assert captured["threshold"] == 0.3
+
+
+def test_reranker_annotates_scores_and_keeps_top_n():
+    model = FakeModel([0.1, 0.9, 0.5])
+    compressor = pipeline.ScoreAnnotatingReranker(model=model, top_n=2)
+
+    kept = compressor.compress_documents(_docs("A", "B", "C"), "q")
+
+    assert [d.page_content for d in kept] == ["B", "C"]
+    assert kept[0].metadata[SCORE_KEY] == 0.9
+    assert kept[1].metadata[SCORE_KEY] == 0.5
+
+
+def test_reranker_sorting_is_descending_by_score():
+    model = FakeModel([0.2, 0.8, 0.6])
+    compressor = pipeline.ScoreAnnotatingReranker(model=model, top_n=3)
+
+    kept = compressor.compress_documents(_docs("A", "B", "C"), "q")
+
+    assert [d.page_content for d in kept] == ["B", "C", "A"]
+
+
+def test_threshold_drops_low_scoring_keep_order():
+    docs = _docs("A", "B", "C")
+    docs[0].metadata[SCORE_KEY] = 0.8
+    docs[1].metadata[SCORE_KEY] = 0.2
+    docs[2].metadata[SCORE_KEY] = 0.5
+
+    kept = pipeline.filter_by_score_threshold(docs, 0.3)
+
+    assert [d.page_content for d in kept] == ["A", "C"]
+
+
+def test_threshold_disabled_when_zero_or_none():
+    docs = _docs("A", "B")
+    docs[0].metadata[SCORE_KEY] = 0.1
+
+    assert pipeline.filter_by_score_threshold(docs, 0.0) == docs
+    assert pipeline.filter_by_score_threshold(docs, None) == docs
+
+
+def test_threshold_fail_open_for_unscored_docs():
+    docs = _docs("A", "B")
+    docs[0].metadata[SCORE_KEY] = 0.8
+    # B has no score -> kept
+
+    kept = pipeline.filter_by_score_threshold(docs, 0.5)
+
+    assert [d.page_content for d in kept] == ["A", "B"]

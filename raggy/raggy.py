@@ -21,19 +21,6 @@ from .vectorstore import (
 logger = logging.getLogger(__name__)
 
 
-def source_label(doc) -> str:
-    """Build a human-readable source location for a retrieved document."""
-    meta = doc.metadata
-    parts = [Path(meta.get("source", "unknown")).name]
-
-    if "page" in meta:
-        parts.append(f"page {meta['page']}")
-    if "start_line" in meta:
-        parts.append(f"lines {meta['start_line']}-{meta['end_line']}")
-
-    return ", ".join(parts)
-
-
 def load_config(config_path: str = "config.yaml") -> dict[str, Any]:
     """Loads and validates all parameters from config.yaml.
 

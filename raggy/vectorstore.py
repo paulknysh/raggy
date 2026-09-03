@@ -13,7 +13,7 @@ from langchain_ollama import OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from tqdm import tqdm
 
-from .bm25_retriever import save_bm25_index
+from .bm25 import save_bm25_index
 from .loaders import (
     annotate_line_numbers,
     load_documents,
