@@ -32,6 +32,11 @@ SUPPORTED_EXTENSIONS = {
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp"}
 
+# The file types whose chunks get start_line/end_line annotations. Only
+# formats whose loader returns the file verbatim qualify; see
+# should_annotate_lines for why the rest carry no location metadata.
+LINE_ANNOTATED_EXTENSIONS = {".txt", ".md", ".markdown"}
+
 DEFAULT_OCR_DPI = 150
 
 
@@ -161,6 +166,56 @@ def _load_file(path: Path) -> list[Document]:
 
     loader = TextLoader(str(path), encoding="utf-8")
     return loader.load()
+
+
+def annotate_line_numbers(splits: list[Document], content: str) -> None:
+    """Annotate text splits with ``start_line``/``end_line`` line ranges.
+
+    The positions are derived from where each chunk's text appears in the
+    ``content`` string (1-indexed line numbers). Because ``chunk_overlap``
+    causes adjacent chunks to share text, a search from ``cursor`` may not
+    find a chunk against its true start; the first-occurrence fallback still
+    yields approximate (but useful) line attribution.
+    """
+    cursor = 0
+    chunk_size_tolerance = max(0, len(content))
+    for split in splits:
+        text = split.page_content
+        start = content.find(text, cursor)
+        if start == -1:
+            start = content.find(text, 0, cursor + chunk_size_tolerance)
+        if start == -1:
+            start = content.find(text)
+
+        if start == -1:
+            continue
+        split.metadata["start_line"] = content.count("\n", 0, start) + 1
+        if text.endswith("\n"):
+            newlines_in_text = text.count("\n") - 1
+        else:
+            newlines_in_text = text.count("\n")
+        split.metadata["end_line"] = split.metadata["start_line"] + newlines_in_text
+        cursor = start + len(text)
+
+
+def should_annotate_lines(doc: Document) -> bool:
+    """Return True only for text-based files that get line-number annotations.
+
+    Line numbers are counted in the loaded ``page_content``, so they describe
+    the file itself only for formats whose loader returns it verbatim — the
+    plain-text ones, read by ``TextLoader``. HTML is excluded for exactly this
+    reason: ``BSHTMLLoader`` yields the extracted text, which keeps the
+    newlines inside text nodes but drops those inside tags and comments, so
+    the count drifts further from the real line the deeper into the file a
+    chunk sits.
+
+    PDFs and PowerPoint decks carry a ``page`` key set by their loaders. DOCX
+    has no native page boundaries (and Word's pagination can't be reproduced
+    reliably), and image files have no meaningful lines, so both carry no
+    location metadata and are skipped here.
+    """
+    suffix = Path(doc.metadata.get("source", "")).suffix.lower()
+    return suffix in LINE_ANNOTATED_EXTENSIONS
 
 
 def _walk_source(root: Path, skipped: list[Path]) -> Iterator[Path]:

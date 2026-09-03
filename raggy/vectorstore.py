@@ -14,7 +14,12 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from tqdm import tqdm
 
 from .bm25_retriever import save_bm25_index
-from .loaders import load_documents, source_files
+from .loaders import (
+    annotate_line_numbers,
+    load_documents,
+    should_annotate_lines,
+    source_files,
+)
 from .progress import ProgressCallback
 
 logger = logging.getLogger(__name__)
@@ -45,51 +50,6 @@ class IndexPlan:
     def has_changes(self) -> bool:
         """True if the DB is out of date in any way."""
         return bool(self.full_rebuild or self.added or self.modified or self.removed)
-
-
-def annotate_line_numbers(splits: list[Document], content: str) -> None:
-    """Annotate text splits with ``start_line``/``end_line`` line ranges.
-
-    The positions are derived from where each chunk's text appears in the
-    ``content`` string (1-indexed line numbers). Because ``chunk_overlap``
-    causes adjacent chunks to share text, a search from ``cursor`` may not
-    find a chunk against its true start; the first-occurrence fallback still
-    yields approximate (but useful) line attribution.
-    """
-    cursor = 0
-    chunk_size_tolerance = max(0, len(content))
-    for split in splits:
-        text = split.page_content
-        start = content.find(text, cursor)
-        if start == -1:
-            start = content.find(text, 0, cursor + chunk_size_tolerance)
-        if start == -1:
-            start = content.find(text)
-
-        if start == -1:
-            continue
-        split.metadata["start_line"] = content.count("\n", 0, start) + 1
-        if text.endswith("\n"):
-            newlines_in_text = text.count("\n") - 1
-        else:
-            newlines_in_text = text.count("\n")
-        split.metadata["end_line"] = split.metadata["start_line"] + newlines_in_text
-        cursor = start + len(text)
-
-
-_LINE_ANNOTATED_EXTENSIONS = {".txt", ".md", ".markdown", ".html", ".htm"}
-
-
-def _should_annotate_lines(doc: Document) -> bool:
-    """Return True only for text-based files that get line-number annotations.
-
-    PDFs and PowerPoint decks carry a ``page`` key set by their loaders. DOCX
-    has no native page boundaries (and Word's pagination can't be reproduced
-    reliably), and image files have no meaningful lines, so both carry no
-    location metadata and are skipped here.
-    """
-    suffix = Path(doc.metadata.get("source", "")).suffix.lower()
-    return suffix in _LINE_ANNOTATED_EXTENSIONS
 
 
 def get_embeddings(model_name: str) -> OllamaEmbeddings:
@@ -128,7 +88,7 @@ def _split_documents(
     splits: list[Document] = []
     for doc in docs:
         doc_splits = text_splitter.split_documents([doc])
-        if _should_annotate_lines(doc):
+        if should_annotate_lines(doc):
             annotate_line_numbers(doc_splits, doc.page_content)
         splits.extend(doc_splits)
     return splits

@@ -178,11 +178,13 @@ re-reading of source files.
 ## Notes
 
 - `PyPDFLoader` parses PDFs page-by-page (each Document carries a `page` key);
-  PowerPoint decks are parsed slide-by-slide (also exposed as `page`); text-based
-  files (`txt`/`md`/`markdown`/`html`) get approximate `start_line`/`end_line`
-  annotations via `annotate_line_numbers`. Word documents (`.docx`) and images
-  carry no location metadata — DOCX has no native page boundaries (Word's
-  pagination can't be reproduced reliably) and images have no meaningful lines.
+  PowerPoint decks are parsed slide-by-slide (also exposed as `page`); plain-text
+  files (`txt`/`md`/`markdown`) get approximate `start_line`/`end_line`
+  annotations via `annotate_line_numbers`. HTML, Word documents (`.docx`) and
+  images carry no location metadata — HTML because `BSHTMLLoader` returns the
+  extracted text rather than the file, so lines counted in it do not match the
+  source; DOCX because it has no native page boundaries (Word's pagination can't
+  be reproduced reliably); images because they have no meaningful lines.
 - Image files (`.png`/`.jpg`/`.jpeg`/`.bmp`) are OCR'd with RapidOCR (runs fully
   on-device via ONNX Runtime); PDFs with no extractable text layer are detected
   and automatically OCR'd page-by-page as well.

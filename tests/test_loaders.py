@@ -1,6 +1,7 @@
 import logging
 
 import pytest
+from langchain_core.documents import Document
 
 from raggy import loaders
 from raggy.loaders import load_documents
@@ -383,3 +384,63 @@ def test_overlapping_sources_load_each_file_once(tmp_path):
         str(path) for path in files
     ]
     assert [doc.page_content for doc in documents] == ["Text A", "Text B"]
+
+
+def test_annotate_line_numbers_sets_start_and_end_lines():
+    content = "line one\nline two\nline three\nline four\nline five\n"
+
+    split = Document(
+        page_content="line three\nline four\n",
+        metadata={"source": "doc.txt"},
+    )
+
+    loaders.annotate_line_numbers([split], content)
+
+    assert split.metadata["start_line"] == 3
+    assert split.metadata["end_line"] == 4
+
+
+def test_annotate_line_numbers_counts_first_line_as_one():
+    content = "single line with no trailing newline"
+
+    split = Document(page_content="single line with", metadata={})
+
+    loaders.annotate_line_numbers([split], content)
+
+    assert split.metadata["start_line"] == 1
+    assert split.metadata["end_line"] == 1
+
+
+def test_annotate_line_numbers_falls_back_for_overlapping_chunks():
+    content = "alpha\nbeta\ngamma\nalpha\nbeta\n"
+
+    split = Document(page_content="alpha\nbeta\n", metadata={})
+
+    loaders.annotate_line_numbers([split], content)
+
+    assert split.metadata["start_line"] == 1
+    assert split.metadata["end_line"] == 2
+
+
+def test_should_annotate_lines_only_for_verbatim_text_files():
+    line_annotated = [".txt", ".md", ".markdown"]
+    for suffix in line_annotated:
+        doc = Document(page_content="x", metadata={"source": f"/tmp/doc{suffix}"})
+        assert loaders.should_annotate_lines(doc) is True, suffix
+
+    # .html/.htm are excluded because BSHTMLLoader returns extracted text, not
+    # the file, so a line counted in it need not be that line of the source.
+    locationless = [
+        ".html",
+        ".htm",
+        ".pdf",
+        ".pptx",
+        ".docx",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".bmp",
+    ]
+    for suffix in locationless:
+        doc = Document(page_content="x", metadata={"source": f"/tmp/doc{suffix}"})
+        assert loaders.should_annotate_lines(doc) is False, suffix
