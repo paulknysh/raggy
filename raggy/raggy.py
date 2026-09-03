@@ -7,16 +7,16 @@ import yaml
 from langchain_chroma import Chroma
 
 from .config import RaggySettings
-from .llm_factory import ensure_ollama_model
-from .pipeline import build_rag_chain
-from .progress import ProgressCallback
-from .reranker import ensure_reranker_model
-from .vectorstore import (
+from .indexing import (
     build_index_config,
     close_vectorstore,
     db_needs_rebuild,
     initialize_db,
 )
+from .llm_factory import ensure_ollama_model
+from .pipeline import build_rag_chain
+from .progress import ProgressCallback
+from .reranker import ensure_reranker_model
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ def refresh_db(
     process, so interactive sessions (like the CLI) would otherwise silently
     keep using a stale DB. Call this before each query; it returns True if the
     DB was re-indexed (incrementally when only the source files changed, see
-    :func:`raggy.vectorstore.initialize_db`).
+    :func:`raggy.indexing.initialize_db`).
 
     Pass a pre-loaded ``cfg`` dict to avoid re-reading ``config.yaml``
     (and re-hashing source files) when the caller already has it. ``progress``

@@ -140,7 +140,7 @@ The DB lives in the directory configured by `persist_directory`
 
 ### How the DB is created
 
-On the first run, `initialize_db` (in `raggy/vectorstore.py`) loads every
+On the first run, `initialize_db` (in `raggy/indexing.py`) loads every
 supported file under each entry in `sources`, splits them into overlapping chunks,
 and embeds them into Chroma. It also writes a `manifest.yaml` into the persist
 directory recording these parameters:

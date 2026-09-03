@@ -366,7 +366,7 @@ def test_overlapping_sources_load_each_file_once(tmp_path):
     also produce one set of chunks — otherwise incremental indexing tracks a
     corpus the DB does not contain.
     """
-    from raggy.vectorstore import file_fingerprints
+    from raggy.indexing import file_fingerprints
 
     nested = tmp_path / "sub"
     nested.mkdir()

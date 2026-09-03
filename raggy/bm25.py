@@ -3,7 +3,7 @@
 The dense vector store (Chroma) has no lexical understanding, so hybrid
 retrieval pairs it with a sparse BM25 pass. :func:`save_bm25_index` writes the
 index to ``<persist_directory>/bm25_index`` when the vector DB is built (see
-:mod:`raggy.vectorstore`); :func:`get_bm25_retriever` loads it back at
+:mod:`raggy.indexing`); :func:`get_bm25_retriever` loads it back at
 retrieval time.
 """
 

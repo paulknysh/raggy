@@ -255,7 +255,7 @@ def source_files(
     """Return every supported file under ``sources``, in the order it is indexed.
 
     This is the corpus's single walk: the loaders below read the files it names
-    and :func:`raggy.vectorstore.file_fingerprints` hashes them, so the paths
+    and :func:`raggy.indexing.file_fingerprints` hashes them, so the paths
     recorded in the manifest are by construction the ones the loaders write
     into each chunk's ``source`` metadata.
 
