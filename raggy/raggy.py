@@ -10,6 +10,7 @@ from .config import RaggySettings
 from .llm_factory import ensure_ollama_model
 from .pipeline import build_rag_chain
 from .progress import ProgressCallback
+from .reranker import ensure_reranker_model
 from .vectorstore import (
     build_index_config,
     close_vectorstore,
@@ -63,15 +64,17 @@ def ensure_models(
 ) -> None:
     """Pull every locally-run model ``cfg`` needs, before any of them is used.
 
-    Embeddings are always local; the generation model only when
-    ``llm_provider`` is ``ollama``. Both are pulled on demand by the pipeline
-    anyway, but a first run downloads gigabytes, so a front end can call this
-    up front with a ``progress`` callback and report the download rather than
-    stalling mid-question.
+    Embeddings are always local, as is the cross-encoder when reranking is
+    enabled; the generation model only when ``llm_provider`` is ``ollama``.
+    All are pulled on demand by the pipeline anyway, but a first run downloads
+    gigabytes, so a front end can call this up front with a ``progress``
+    callback and report the download rather than stalling mid-question.
     """
     ensure_ollama_model(cfg["embedding_model"], progress=progress)
     if cfg["llm_provider"] == "ollama":
         ensure_ollama_model(cfg["llm_model"], progress=progress)
+    if cfg["rerank_enabled"]:
+        ensure_reranker_model(cfg["rerank_model"], progress=progress)
 
 
 def _init_db(progress: ProgressCallback | None = None) -> Chroma:

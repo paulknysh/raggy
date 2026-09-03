@@ -140,3 +140,76 @@ def test_resolve_onnx_file_caches_repo_files():
         reranker._resolve_onnx_file("cached-repo", "onnx/model_qint8_arm64.onnx")
         == "onnx/model.onnx"
     )
+
+
+def test_ensure_reranker_model_downloads_weights_and_tokenizer(monkeypatch):
+    downloads = []
+    monkeypatch.setattr(
+        reranker, "_resolve_onnx_file", lambda model, pref: "onnx/model.onnx"
+    )
+    monkeypatch.setattr(
+        reranker,
+        "hf_hub_download",
+        lambda repo_id, filename, token, tqdm_class: downloads.append(
+            (repo_id, filename, tqdm_class)
+        ),
+    )
+
+    reranker.ensure_reranker_model("model-a")
+
+    assert downloads == [
+        ("model-a", "onnx/model.onnx", None),
+        ("model-a", "tokenizer.json", None),
+    ]
+
+
+def test_ensure_reranker_model_reports_bytes_to_progress(monkeypatch):
+    reported = []
+    monkeypatch.setattr(
+        reranker, "_resolve_onnx_file", lambda model, pref: "onnx/model.onnx"
+    )
+
+    def fake_download(repo_id, filename, token, tqdm_class):
+        with tqdm_class(total=100, unit="B", desc=f"{filename}: downloading") as bar:
+            bar.update(40)
+            bar.update_transfer(40)  # transfer bytes are not the file's bytes
+            bar.set_postfix_str("1.0MB/s")
+            bar.update(60)
+
+    monkeypatch.setattr(reranker, "hf_hub_download", fake_download)
+
+    reranker.ensure_reranker_model(
+        "model-a", progress=lambda *args: reported.append(args)
+    )
+
+    assert (
+        reported
+        == [
+            ("downloading model-a ...", 40, 100),
+            ("downloading model-a ...", 100, 100),
+        ]
+        * 2
+    )
+
+
+def test_progress_tqdm_rewinds_on_resumed_download():
+    reported = []
+    bar = reranker._progress_tqdm_class(
+        lambda *args: reported.append(args), "downloading ..."
+    )(total=100)
+
+    bar.update(30)
+    bar.update(-30)  # huggingface-hub rewinds the bar when a download restarts
+
+    assert [n for _, n, _ in reported] == [30, 0]
+
+
+def test_progress_tqdm_stays_silent_without_a_total():
+    reported = []
+    bar = reranker._progress_tqdm_class(
+        lambda *args: reported.append(args), "downloading ..."
+    )()
+
+    bar.update(30)
+
+    assert reported == []

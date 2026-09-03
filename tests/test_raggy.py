@@ -692,10 +692,19 @@ def test_ensure_models_pulls_embedding_and_local_llm(monkeypatch):
         "ensure_ollama_model",
         lambda model, progress=None: pulled.append((model, progress)),
     )
+    monkeypatch.setattr(
+        raggy, "ensure_reranker_model", lambda model, progress=None: None
+    )
 
     sentinel = object()
     raggy.ensure_models(
-        {"embedding_model": "embed-x", "llm_provider": "ollama", "llm_model": "llm-x"},
+        {
+            "embedding_model": "embed-x",
+            "llm_provider": "ollama",
+            "llm_model": "llm-x",
+            "rerank_enabled": False,
+            "rerank_model": "rerank-x",
+        },
         progress=sentinel,
     )
 
@@ -709,13 +718,68 @@ def test_ensure_models_skips_llm_for_remote_providers(monkeypatch):
         "ensure_ollama_model",
         lambda model, progress=None: pulled.append(model),
     )
+    monkeypatch.setattr(
+        raggy, "ensure_reranker_model", lambda model, progress=None: None
+    )
 
     # Embeddings are always local, so the embedding model is still pulled.
     raggy.ensure_models(
-        {"embedding_model": "embed-x", "llm_provider": "openai", "llm_model": "gpt-4o"}
+        {
+            "embedding_model": "embed-x",
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o",
+            "rerank_enabled": False,
+            "rerank_model": "rerank-x",
+        }
     )
 
     assert pulled == ["embed-x"]
+
+
+def test_ensure_models_downloads_reranker_when_enabled(monkeypatch):
+    downloaded = []
+    monkeypatch.setattr(raggy, "ensure_ollama_model", lambda model, progress=None: None)
+    monkeypatch.setattr(
+        raggy,
+        "ensure_reranker_model",
+        lambda model, progress=None: downloaded.append((model, progress)),
+    )
+
+    sentinel = object()
+    raggy.ensure_models(
+        {
+            "embedding_model": "embed-x",
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o",
+            "rerank_enabled": True,
+            "rerank_model": "rerank-x",
+        },
+        progress=sentinel,
+    )
+
+    assert downloaded == [("rerank-x", sentinel)]
+
+
+def test_ensure_models_skips_reranker_when_disabled(monkeypatch):
+    downloaded = []
+    monkeypatch.setattr(raggy, "ensure_ollama_model", lambda model, progress=None: None)
+    monkeypatch.setattr(
+        raggy,
+        "ensure_reranker_model",
+        lambda model, progress=None: downloaded.append(model),
+    )
+
+    raggy.ensure_models(
+        {
+            "embedding_model": "embed-x",
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o",
+            "rerank_enabled": False,
+            "rerank_model": "rerank-x",
+        }
+    )
+
+    assert downloaded == []
 
 
 def test_refresh_db_announces_staleness_before_reindexing(monkeypatch):

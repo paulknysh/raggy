@@ -20,6 +20,8 @@ from huggingface_hub import HfApi, hf_hub_download
 from langchain_core.cross_encoders import BaseCrossEncoder
 from tokenizers import Tokenizer
 
+from .progress import ProgressCallback
+
 _HF_HTTP_LOGGER = logging.getLogger("huggingface_hub.utils._http")
 
 
@@ -105,6 +107,96 @@ def _resolve_onnx_file(repo_id: str, preferred: str) -> str:
     )
 
 
+def _progress_tqdm_class(progress: ProgressCallback, message: str) -> type:
+    """Build a tqdm stand-in that reports byte counts to ``progress``.
+
+    ``hf_hub_download`` otherwise draws its own bars straight to the terminal
+    — two of them on the Xet backend, one for reconstruction and one for raw
+    transfer — which a front end can neither label nor place. It accepts a
+    ``tqdm_class`` instead, so we hand it a duck-typed stand-in (the same shape
+    huggingface-hub uses internally to aggregate snapshot downloads) that
+    draws nothing and forwards the counters. Defining ``update_transfer``
+    collapses the two Xet bars into this one object, so a caller sees a single
+    monotonic count per file.
+    """
+
+    class _ProgressTqdm:
+        def __init__(self, *args, total=None, initial=0, **kwargs) -> None:
+            self.total = total
+            self.n = initial
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc) -> None:
+            return None
+
+        def update(self, n=1) -> None:
+            # A resumed download rewinds the counter with a negative n.
+            self.n = max(0, self.n + int(n or 0))
+            if self.total:
+                progress(message, min(self.n, self.total), self.total)
+
+        # Transfer bytes are deduplicated/compressed and so don't line up with
+        # the file's size; the reconstruction count above is the one to show.
+        def update_transfer(self, n=1) -> None:
+            return None
+
+        def set_postfix_str(self, postfix: str, refresh: bool = False) -> None:
+            return None
+
+        def set_transfer_postfix_str(self, postfix: str, refresh: bool = False) -> None:
+            return None
+
+        def refresh(self) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+    return _ProgressTqdm
+
+
+def _download_model_files(
+    model: str,
+    onnx_file: str,
+    progress: ProgressCallback | None = None,
+) -> tuple[str, str]:
+    """Fetch the weights and tokenizer for ``model``, returning their paths.
+
+    Both files are cached on disk by huggingface-hub, so this is a no-op (and
+    silent) once the model has been downloaded.
+    """
+    tqdm_class = (
+        _progress_tqdm_class(progress, f"downloading {model} ...")
+        if progress is not None
+        else None
+    )
+    model_path = hf_hub_download(
+        repo_id=model, filename=onnx_file, token=False, tqdm_class=tqdm_class
+    )
+    tokenizer_path = hf_hub_download(
+        repo_id=model, filename="tokenizer.json", token=False, tqdm_class=tqdm_class
+    )
+    return model_path, tokenizer_path
+
+
+def ensure_reranker_model(
+    model: str,
+    onnx_file: str | None = None,
+    progress: ProgressCallback | None = None,
+) -> None:
+    """Download ``model`` into the huggingface-hub cache if it isn't there yet.
+
+    The reranker's files are pulled on demand when the pipeline first builds a
+    cross-encoder, but that download lands mid-question; a front end can call
+    this up front with a ``progress`` callback and report it on its own status
+    line instead.
+    """
+    onnx_file = onnx_file or _resolve_onnx_file(model, default_onnx_file())
+    _download_model_files(model, onnx_file, progress)
+
+
 def _sigmoid(logit: float) -> float:
     return 1.0 / (1.0 + np.exp(-float(logit)))
 
@@ -128,10 +220,7 @@ class OnnxCrossEncoder(BaseCrossEncoder):
 
         onnx_file = onnx_file or _resolve_onnx_file(model, default_onnx_file())
         self.onnx_file = onnx_file
-        model_path = hf_hub_download(repo_id=model, filename=onnx_file, token=False)
-        tokenizer_path = hf_hub_download(
-            repo_id=model, filename="tokenizer.json", token=False
-        )
+        model_path, tokenizer_path = _download_model_files(model, onnx_file)
 
         self._tokenizer = Tokenizer.from_file(tokenizer_path)
         self._tokenizer.enable_truncation(max_length=max_length)
