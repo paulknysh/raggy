@@ -1,5 +1,4 @@
 import hashlib
-import json
 import logging
 import math
 import shutil
@@ -7,7 +6,6 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import bm25s
 import yaml
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
@@ -15,7 +13,7 @@ from langchain_ollama import OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from tqdm import tqdm
 
-from .bm25_retriever import BM25_INDEX_DIRNAME, METADATA_FILENAME
+from .bm25_retriever import save_bm25_index
 from .loaders import load_documents, source_files
 from .progress import ProgressCallback
 
@@ -119,29 +117,6 @@ def close_vectorstore(vectorstore: Chroma) -> None:
         close()
 
 
-def _save_bm25_index(splits: list[Document], persist_directory: str) -> None:
-    """Build and persist a ``bm25s`` index (plus chunk metadata) to disk.
-
-    The index is written to ``<persist_directory>/bm25_index`` at DB build
-    time so the retrieval step can load it later without re-indexing. Corpus
-    entries are aligned by index with the per-chunk metadata so the
-    ``Bm25sRetriever`` can reconstruct the original ``Document``s.
-    """
-    index_dir = Path(persist_directory) / BM25_INDEX_DIRNAME
-    if not splits:
-        # An empty corpus can't be indexed; drop the old index rather than
-        # leaving one that would keep returning removed chunks.
-        shutil.rmtree(index_dir, ignore_errors=True)
-        return
-    corpus = [split.page_content for split in splits]
-    bm25 = bm25s.BM25()
-    bm25.index(bm25s.tokenize(corpus, show_progress=False), show_progress=False)
-    index_dir.mkdir(parents=True, exist_ok=True)
-    bm25.save(str(index_dir), corpus=corpus, show_progress=False)
-    metadata = [dict(split.metadata) for split in splits]
-    (index_dir / METADATA_FILENAME).write_text(json.dumps(metadata), encoding="utf-8")
-
-
 def _split_documents(
     docs: list[Document], chunk_size: int, chunk_overlap: int
 ) -> list[Document]:
@@ -240,7 +215,7 @@ def create_index(
         return
 
     _embed_in_batches(splits, vectorstore, batch_size, progress)
-    _save_bm25_index(splits, persist_directory)
+    save_bm25_index(splits, persist_directory)
 
 
 # Chroma binds one SQL variable per returned row, and SQLite caps a statement
@@ -315,7 +290,7 @@ def update_index(
         else:
             logger.warning("No content found in the new/changed files.")
 
-    _save_bm25_index(_collection_chunks(vectorstore), persist_directory)
+    save_bm25_index(_collection_chunks(vectorstore), persist_directory)
 
 
 # Read in 1 MiB blocks rather than slurping whole files: the corpus can

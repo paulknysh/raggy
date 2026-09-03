@@ -129,23 +129,6 @@ def test_initialize_db_skips_ingest_when_data_exists(monkeypatch, tmp_path):
     assert calls["ingest"] == 0
 
 
-def test_save_bm25_index_persists_expected_files(tmp_path):
-    from langchain_core.documents import Document
-
-    from raggy.bm25_retriever import BM25_INDEX_DIRNAME, METADATA_FILENAME
-
-    splits = [
-        Document(page_content="chunk one", metadata={"source": "a.txt", "page": 1}),
-        Document(page_content="chunk two", metadata={"source": "b.txt", "page": 2}),
-    ]
-    vectorstore._save_bm25_index(splits, str(tmp_path))
-
-    index_dir = tmp_path / BM25_INDEX_DIRNAME
-    assert index_dir.is_dir()
-    assert (index_dir / METADATA_FILENAME).exists()
-    assert (index_dir / "data.csc.index.npy").exists()
-
-
 def test_initialize_db_rebuilds_when_manifest_differs(tmp_path, monkeypatch):
     calls = {"ingest": 0}
     source_file = tmp_path / "doc.txt"
@@ -362,7 +345,7 @@ def test_update_index_deletes_stale_chunks_and_embeds_changed_files(
     )
     monkeypatch.setattr(
         vectorstore,
-        "_save_bm25_index",
+        "save_bm25_index",
         lambda splits, persist_directory: saved.append(splits),
     )
 
@@ -446,20 +429,6 @@ def test_initialize_db_updates_incrementally_when_only_sources_change(
         (persist_directory / "manifest.yaml").read_text(encoding="utf-8")
     )
     assert str(added) in manifest["files"]
-
-
-def test_save_bm25_index_removes_index_for_empty_corpus(tmp_path):
-    from langchain_core.documents import Document
-
-    from raggy.bm25_retriever import BM25_INDEX_DIRNAME
-
-    vectorstore._save_bm25_index(
-        [Document(page_content="chunk", metadata={})], str(tmp_path)
-    )
-    assert (tmp_path / BM25_INDEX_DIRNAME).is_dir()
-
-    vectorstore._save_bm25_index([], str(tmp_path))
-    assert not (tmp_path / BM25_INDEX_DIRNAME).exists()
 
 
 def test_collection_chunks_pages_through_large_collections(monkeypatch):
