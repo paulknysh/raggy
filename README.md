@@ -77,9 +77,9 @@ It creates your own user config (`config.yaml`). This is where all your document
 
 ```
 sources:
-  - "/Users/xyz/Documents/docs" # folder
-  - "/Users/xyz/Downloads/docs_1" # folder
-  - "/Users/xyz/Desktop/docs_2/abc.pdf" # file
+  - /Users/xyz/Documents/docs # folder
+  - /Users/xyz/Downloads/docs_1 # folder
+  - /Users/xyz/Desktop/docs_2/abc.pdf # file
 ```
 
 To start CLI type (by default always uses `config.yaml` created inside repo):
