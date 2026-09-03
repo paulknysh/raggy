@@ -1,6 +1,7 @@
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
+from typing import Literal
 
 from langchain_community.document_loaders import (
     BSHTMLLoader,
@@ -34,20 +35,6 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp"}
 DEFAULT_OCR_DPI = 150
 
 
-class _IngestReporter:
-    """Numbers the files as they are read and reports each one in turn."""
-
-    def __init__(self, progress: ProgressCallback | None, total: int) -> None:
-        self._progress = progress
-        self._total = total
-        self._index = 0
-
-    def starting(self, path: Path) -> None:
-        self._index += 1
-        if self._progress is not None:
-            self._progress(f"[{self._index}/{self._total}] ingesting {path.name} ...")
-
-
 _ocr_engine = None
 
 
@@ -72,8 +59,6 @@ def _ocr_image_bytes(image_bytes: bytes) -> str:
 def _load_image(path: Path) -> list[Document]:
     """OCR a single image file into one Document."""
     text = _ocr_image_bytes(path.read_bytes())
-    if not text.strip():
-        logger.warning("OCR produced no text for '%s'.", path)
     return [Document(page_content=text, metadata={"source": str(path)})]
 
 
@@ -143,17 +128,13 @@ def _load_pptx(path: Path) -> list[Document]:
     return documents
 
 
-def _load_file(path: Path, skipped: list[Path] | None = None) -> list[Document]:
+def _load_file(path: Path) -> list[Document]:
     """Load documents from a single supported file based on its extension.
 
-    Unsupported file types are ignored and recorded in ``skipped`` instead of
-    raising an error.
+    Callers reach this only through :func:`source_files`, which is what decides
+    a file is supported, so the extension is dispatched on here but never
+    re-checked.
     """
-    if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-        if skipped is not None:
-            skipped.append(path)
-        return []
-
     suffix = path.suffix.lower()
     if suffix == ".pdf":
         loader = PyPDFLoader(str(path))
@@ -182,85 +163,111 @@ def _load_file(path: Path, skipped: list[Path] | None = None) -> list[Document]:
     return loader.load()
 
 
-def _supported_files(path: Path) -> Iterator[Path]:
-    """Yield the supported files a source contributes, in the order they load."""
-    if path.is_dir():
-        for file_path in sorted(path.rglob("*")):
-            if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_EXTENSIONS:
-                yield file_path
-    elif path.suffix.lower() in SUPPORTED_EXTENSIONS:
-        yield path
-
-
-def _make_reporter(
-    progress: ProgressCallback | None, paths: list[Path]
-) -> _IngestReporter | None:
-    """Build a reporter over ``paths``, or None when nobody is watching.
-
-    The ``i/N`` denominator costs a walk of the sources of its own, so it is
-    only counted when there is somewhere to report it.
-    """
-    if progress is None:
-        return None
-    total = sum(1 for path in paths for _ in _supported_files(path))
-    return _IngestReporter(progress, total)
-
-
-def _load_directory(
-    path: Path,
-    skipped: list[Path] | None = None,
-    reporter: _IngestReporter | None = None,
-) -> list[Document]:
-    """Recursively load documents from every supported file inside a directory."""
-    found = False
-    documents: list[Document] = []
-
-    for file_path in sorted(path.rglob("*")):
-        if not file_path.is_file():
-            continue
-        if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-            if skipped is not None:
+def _walk_source(root: Path, skipped: list[Path]) -> Iterator[Path]:
+    """Yield the supported files one source entry contributes, in load order."""
+    if root.is_dir():
+        for file_path in sorted(root.rglob("*")):
+            if not file_path.is_file():
+                continue
+            if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
                 skipped.append(file_path)
-            continue
+                continue
+            yield file_path
+    elif root.suffix.lower() in SUPPORTED_EXTENSIONS:
+        yield root
+    else:
+        skipped.append(root)
 
-        found = True
-        if reporter is not None:
-            reporter.starting(file_path)
-        try:
-            documents.extend(_load_file(file_path))
-        except Exception as e:  # noqa: BLE001
-            logger.warning("Failed to load '%s': %s", file_path, e)
 
-    if not found:
+def source_files(
+    sources: Sequence[str | Path],
+    skipped: list[Path] | None = None,
+    on_missing: Literal["raise", "skip"] = "raise",
+) -> list[Path]:
+    """Return every supported file under ``sources``, in the order it is indexed.
+
+    This is the corpus's single walk: the loaders below read the files it names
+    and :func:`raggy.vectorstore.file_fingerprints` hashes them, so the paths
+    recorded in the manifest are by construction the ones the loaders write
+    into each chunk's ``source`` metadata.
+
+    Each entry may be a single file or a directory, which is walked
+    recursively. Unsupported files are recorded in ``skipped`` rather than
+    raising, and a directory holding none simply contributes nothing. A file
+    reachable through more than one entry is returned once, at its first
+    position. ``on_missing`` decides what an entry that no longer exists means
+    (see :func:`load_documents`).
+    """
+    if on_missing not in ("raise", "skip"):
+        raise ValueError(f"on_missing must be 'raise' or 'skip', got {on_missing!r}")
+
+    paths: list[Path] = []
+    missing: list[Path] = []
+    for source in sources:
+        path = Path(source)
+        (paths if path.exists() else missing).append(path)
+
+    if missing and on_missing == "raise":
         raise FileNotFoundError(
-            f"No supported files (txt/md/pdf/docx/pptx/html/img) found under "
-            f"directory: {path}"
+            "Source document(s) not found at: "
+            + ", ".join(str(path) for path in missing)
         )
+    for path in missing:
+        logger.warning("Skipping '%s': file no longer exists.", path)
 
+    files: list[Path] = []
+    seen: set[Path] = set()
+
+    def claim(path: Path) -> bool:
+        """True the first time a path is reached, under any of its spellings."""
+        resolved = path.resolve()
+        if resolved in seen:
+            return False
+        seen.add(resolved)
+        return True
+
+    for root in paths:
+        unsupported: list[Path] = []
+        for file_path in _walk_source(root, unsupported):
+            if claim(file_path):
+                files.append(file_path)
+        if skipped is not None:
+            skipped.extend(path for path in unsupported if claim(path))
+    return files
+
+
+def _load_each(
+    paths: list[Path],
+    progress: ProgressCallback | None,
+) -> list[Document]:
+    """Load every path in turn, reporting each one and skipping what fails.
+
+    A file that cannot be read is logged and passed over rather than aborting
+    the run: one unreadable file should not cost an otherwise good corpus.
+    """
+    total = len(paths)
+    documents: list[Document] = []
+    for index, path in enumerate(paths, start=1):
+        if progress is not None:
+            progress(f"[{index}/{total}] ingesting {path.name} ...")
+        try:
+            documents.extend(_load_file(path))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Failed to load '%s': %s", path, e)
     return documents
 
 
-def _load_source(
-    path: Path,
-    skipped: list[Path] | None,
-    reporter: _IngestReporter | None,
-) -> list[Document]:
-    """Load one source entry (a directory or a single file)."""
-    if path.is_dir():
-        logger.info("Loading documents from directory '%s'...", path)
-        return _load_directory(path, skipped, reporter)
+def _report_unsupported(skipped: list[Path], loaded_any: bool) -> None:
+    """Log a single message summarizing ignored unsupported files.
 
-    logger.info("Loading document from '%s'...", path)
-    if reporter is not None and path.suffix.lower() in SUPPORTED_EXTENSIONS:
-        reporter.starting(path)
-    return _load_file(path, skipped)
-
-
-def _report_unsupported(skipped: list[Path]) -> None:
-    """Log a single info message summarizing ignored unsupported files."""
+    Raised to WARNING when nothing loaded at all: the sources then hold nothing
+    readable — most likely a directory of file types raggy does not support —
+    and the CLI shows WARNING but not INFO.
+    """
     if not skipped:
         return
-    logger.info(
+    logger.log(
+        logging.INFO if loaded_any else logging.WARNING,
         "Detected %d unsupported file(s) that won't be used; ignoring them. "
         "Supported file types: %s.",
         len(skipped),
@@ -269,89 +276,27 @@ def _report_unsupported(skipped: list[Path]) -> None:
 
 
 def load_documents(
-    source: str,
-    skipped: list[Path] | None = None,
+    sources: Sequence[str | Path],
     progress: ProgressCallback | None = None,
+    on_missing: Literal["raise", "skip"] = "raise",
 ) -> list[Document]:
-    """Load documents from a single file or a directory containing supported files.
+    """Load documents from files and/or directories.
 
-    Unsupported file types are ignored rather than raising an error. When
-    ``skipped`` is not provided, a single info message about any ignored files
-    is logged. ``progress`` receives one status line per file as it is read.
+    Each entry may be a single supported file or a directory containing them;
+    see :func:`source_files` for how the two are walked. Unsupported file types
+    are ignored and reported once, and a file that fails to read is logged and
+    skipped rather than aborting the run. ``progress`` receives one status line
+    per file, counted across all entries.
+
+    ``on_missing`` decides what an entry that no longer exists means. The
+    default ``"raise"`` suits the configured sources, where a missing path is a
+    config error worth stopping for. Incremental indexing passes ``"skip"``:
+    its file list was fingerprinted earlier in the same run, so a file deleted
+    since then is expected, and dropping it beats aborting the whole update —
+    the next run reconciles it as a deletion.
     """
-    path = Path(source)
-
-    if not path.exists():
-        raise FileNotFoundError(f"Source document not found at: {source}")
-
-    owns_skipped = skipped is None
-    if owns_skipped:
-        skipped = []
-
-    documents = _load_source(path, skipped, _make_reporter(progress, [path]))
-
-    if owns_skipped:
-        _report_unsupported(skipped)
-    return documents
-
-
-def load_documents_from_sources(
-    sources: list[str],
-    progress: ProgressCallback | None = None,
-) -> list[Document]:
-    """Load documents from multiple files and/or directories.
-
-    Each entry in ``sources`` may be a single supported file or a directory
-    containing supported files. Any missing source raises ``FileNotFoundError``
-    before any documents are loaded. Unsupported file types are ignored and
-    reported once via a single info message. ``progress`` receives one status
-    line per file, counted across all sources.
-    """
-    paths = [Path(source) for source in sources]
-    missing = [str(path) for path in paths if not path.exists()]
-    if missing:
-        raise FileNotFoundError(
-            "Source document(s) not found at: " + ", ".join(missing)
-        )
-
-    reporter = _make_reporter(progress, paths)
-    documents: list[Document] = []
     skipped: list[Path] = []
-    for path in paths:
-        documents.extend(_load_source(path, skipped, reporter))
-    _report_unsupported(skipped)
-    return documents
-
-
-def load_documents_from_paths(
-    paths: list[Path],
-    progress: ProgressCallback | None = None,
-) -> list[Document]:
-    """Load documents from an explicit list of files.
-
-    Used by incremental indexing, which already knows exactly which files were
-    added or modified and must not re-read the rest of the corpus. Files that
-    fail to load are logged and skipped rather than aborting the update.
-    ``progress`` receives one status line per file as it is read.
-    """
-    existing = []
-    for path in paths:
-        if not path.exists():
-            logger.warning("Skipping '%s': file no longer exists.", path)
-            continue
-        existing.append(path)
-
-    reporter = (
-        _IngestReporter(progress, len(existing)) if progress is not None else None
-    )
-    documents: list[Document] = []
-    skipped: list[Path] = []
-    for path in existing:
-        if reporter is not None:
-            reporter.starting(path)
-        try:
-            documents.extend(_load_file(path, skipped))
-        except Exception as e:  # noqa: BLE001
-            logger.warning("Failed to load '%s': %s", path, e)
-    _report_unsupported(skipped)
+    files = source_files(sources, skipped, on_missing=on_missing)
+    documents = _load_each(files, progress)
+    _report_unsupported(skipped, bool(documents))
     return documents

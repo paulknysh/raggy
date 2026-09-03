@@ -4,7 +4,6 @@ import logging
 import math
 import shutil
 import sys
-from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -17,11 +16,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from tqdm import tqdm
 
 from .bm25_retriever import BM25_INDEX_DIRNAME, METADATA_FILENAME
-from .loaders import (
-    SUPPORTED_EXTENSIONS,
-    load_documents_from_paths,
-    load_documents_from_sources,
-)
+from .loaders import load_documents, source_files
 from .progress import ProgressCallback
 
 logger = logging.getLogger(__name__)
@@ -231,7 +226,7 @@ def create_index(
 
     ``progress`` receives one status line per file read and per embedded batch.
     """
-    docs = load_documents_from_sources(sources, progress=progress)
+    docs = load_documents(sources, progress=progress)
 
     if not docs:
         logger.warning("No documents found to index.")
@@ -311,9 +306,9 @@ def update_index(
     reindexed = plan.added + plan.modified
     if reindexed:
         logger.info("Indexing %d new/changed file(s).", len(reindexed))
-        docs = load_documents_from_paths(
-            [Path(path) for path in reindexed], progress=progress
-        )
+        # A file fingerprinted earlier this run may already be gone; skipping
+        # it beats aborting the update, and the next run records the deletion.
+        docs = load_documents(reindexed, progress=progress, on_missing="skip")
         splits = _split_documents(docs, chunk_size, chunk_overlap)
         if splits:
             _embed_in_batches(splits, vectorstore, batch_size, progress)
@@ -341,32 +336,6 @@ def _hash_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def _iter_source_files(sources: list[str]) -> Iterator[Path]:
-    """Yield every supported file under ``sources``, in indexing order.
-
-    Walks each entry exactly the way ``load_documents`` indexes it, so the
-    paths yielded here are the same strings the loaders write into each
-    chunk's ``source`` metadata.
-    """
-    seen: set[Path] = set()
-    for source in sources:
-        root = Path(source)
-        if not root.exists():
-            raise FileNotFoundError(f"Source document not found at: {source}")
-
-        candidates = sorted(root.rglob("*")) if root.is_dir() else [root]
-        for file_path in candidates:
-            if root.is_dir() and not file_path.is_file():
-                continue
-            if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-                continue
-            resolved = file_path.resolve()
-            if resolved in seen:
-                continue
-            seen.add(resolved)
-            yield file_path
-
-
 def file_fingerprints(sources: list[str]) -> dict[str, str]:
     """Return a ``{file path: content hash}`` map of the source file set.
 
@@ -374,9 +343,13 @@ def file_fingerprints(sources: list[str]) -> dict[str, str]:
     makes incremental indexing possible: comparing this map against the one in
     the manifest names exactly which files were added, modified, or deleted.
     Cheap enough to run on every pipeline start.
+
+    The file set comes from :func:`raggy.loaders.source_files`, the same walk
+    the loaders use, so these keys are exactly the ``source`` metadata values
+    stored on the chunks they fingerprint.
     """
     fingerprints: dict[str, str] = {}
-    for file_path in _iter_source_files(sources):
+    for file_path in source_files(sources):
         try:
             fingerprints[str(file_path)] = _hash_file(file_path)
         except OSError:

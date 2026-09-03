@@ -350,8 +350,8 @@ def test_update_index_deletes_stale_chunks_and_embeds_changed_files(
 
     monkeypatch.setattr(
         vectorstore,
-        "load_documents_from_paths",
-        lambda paths, progress=None: [
+        "load_documents",
+        lambda paths, progress=None, on_missing="raise": [
             Document(page_content="new text", metadata={"source": str(paths[0])})
         ],
     )

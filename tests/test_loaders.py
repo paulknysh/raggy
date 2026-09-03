@@ -3,40 +3,35 @@ import logging
 import pytest
 
 from raggy import loaders
-from raggy.loaders import load_documents, load_documents_from_sources
+from raggy.loaders import load_documents
 
 
-def test_load_documents_raises_for_missing_source():
-    with pytest.raises(FileNotFoundError):
-        load_documents("/nonexistent/path.txt")
-
-
-def test_load_documents_from_sources_loads_multiple_sources(tmp_path):
+def test_load_documents_loads_multiple_sources(tmp_path):
     dir_a = tmp_path / "a"
     dir_a.mkdir()
     (dir_a / "one.txt").write_text("Text A", encoding="utf-8")
     (tmp_path / "two.md").write_text("Text B", encoding="utf-8")
 
-    documents = load_documents_from_sources([str(dir_a), str(tmp_path / "two.md")])
+    documents = load_documents([str(dir_a), str(tmp_path / "two.md")])
 
     contents = {doc.page_content for doc in documents}
     assert contents == {"Text A", "Text B"}
 
 
-def test_load_documents_from_sources_raises_for_missing_source(tmp_path):
+def test_load_documents_raises_for_missing_source(tmp_path):
     dir_a = tmp_path / "a"
     dir_a.mkdir()
     (dir_a / "one.txt").write_text("Text A", encoding="utf-8")
 
     with pytest.raises(FileNotFoundError, match="not found"):
-        load_documents_from_sources([str(dir_a), str(tmp_path / "missing.txt")])
+        load_documents([str(dir_a), str(tmp_path / "missing.txt")])
 
 
 def test_load_documents_ignores_unsupported_extension(tmp_path):
     unsupported = tmp_path / "notes.csv"
     unsupported.write_text("hello", encoding="utf-8")
 
-    documents = load_documents(str(unsupported))
+    documents = load_documents([str(unsupported)])
 
     assert documents == []
 
@@ -47,7 +42,7 @@ def test_load_documents_reports_unsupported_file_once(tmp_path, caplog):
     (tmp_path / "data.json").write_text("{}", encoding="utf-8")
 
     with caplog.at_level(logging.INFO, logger="raggy.loaders"):
-        documents = load_documents_from_sources([str(tmp_path)])
+        documents = load_documents([str(tmp_path)])
 
     contents = {doc.page_content for doc in documents}
     assert contents == {"Text A"}
@@ -65,7 +60,7 @@ def test_load_documents_loads_markdown_file(tmp_path):
     doc = tmp_path / "notes.md"
     doc.write_text("# Heading\n\nSome markdown body.", encoding="utf-8")
 
-    documents = load_documents(str(doc))
+    documents = load_documents([str(doc)])
 
     assert len(documents) == 1
     assert "Some markdown body." in documents[0].page_content
@@ -75,7 +70,7 @@ def test_load_documents_loads_text_file(tmp_path):
     doc = tmp_path / "notes.txt"
     doc.write_text("Hello world", encoding="utf-8")
 
-    documents = load_documents(str(doc))
+    documents = load_documents([str(doc)])
 
     assert len(documents) == 1
     assert documents[0].page_content == "Hello world"
@@ -90,7 +85,7 @@ def test_load_documents_loads_pdf_file(tmp_path):
     page.insert_text((72, 100), "PDF content here")
     doc.save(str(pdf_path))
 
-    documents = load_documents(str(pdf_path))
+    documents = load_documents([str(pdf_path)])
 
     assert len(documents) == 1
     assert "PDF content here" in documents[0].page_content
@@ -107,7 +102,7 @@ def test_load_documents_pdf_pages_are_one_indexed(tmp_path):
         page.insert_text((72, 100), "Page content")
     doc.save(str(pdf_path))
 
-    documents = load_documents(str(pdf_path))
+    documents = load_documents([str(pdf_path)])
 
     assert [doc.metadata["page"] for doc in documents] == [1, 2, 3]
 
@@ -118,17 +113,26 @@ def test_load_documents_recursively_loads_directory(tmp_path):
     (tmp_path / "nested" / "b.txt").write_text("Text B", encoding="utf-8")
     (tmp_path / "ignore.csv").write_text("ignored", encoding="utf-8")
 
-    documents = load_documents(str(tmp_path))
+    documents = load_documents([str(tmp_path)])
 
     contents = {doc.page_content for doc in documents}
     assert contents == {"Text A", "Text B"}
 
 
-def test_load_documents_raises_when_directory_has_no_supported_files(tmp_path):
+def test_load_documents_ignores_directory_with_no_supported_files(tmp_path, caplog):
+    """An empty source contributes nothing; only a missing one is an error."""
     (tmp_path / "notes.csv").write_text("ignored", encoding="utf-8")
 
-    with pytest.raises(FileNotFoundError, match="No supported files"):
-        load_documents(str(tmp_path))
+    with caplog.at_level(logging.WARNING, logger="raggy.loaders"):
+        documents = load_documents([str(tmp_path)])
+
+    assert documents == []
+    # Nothing loaded at all, so the "unsupported" notice is raised to WARNING,
+    # which is the level the CLI actually shows.
+    assert any(
+        record.levelno == logging.WARNING and "unsupported" in record.getMessage()
+        for record in caplog.records
+    )
 
 
 def test_supported_extensions_exported():
@@ -156,7 +160,7 @@ def test_load_documents_loads_docx_file(tmp_path):
     docx.add_paragraph("Hello from docx")
     docx.save(str(docx_path))
 
-    documents = load_documents(str(docx_path))
+    documents = load_documents([str(docx_path)])
 
     assert len(documents) == 1
     assert "Hello from docx" in documents[0].page_content
@@ -172,7 +176,7 @@ def test_load_documents_loads_pptx_file(tmp_path):
     slide.shapes.title.text = "Slide Title"
     presentation.save(str(pptx_path))
 
-    documents = load_documents(str(pptx_path))
+    documents = load_documents([str(pptx_path)])
 
     assert len(documents) == 1
     assert "Slide Title" in documents[0].page_content
@@ -186,7 +190,7 @@ def test_load_documents_loads_html_file(tmp_path):
         encoding="utf-8",
     )
 
-    documents = load_documents(str(html_path))
+    documents = load_documents([str(html_path)])
 
     assert len(documents) == 1
     assert "Some HTML body." in documents[0].page_content
@@ -202,7 +206,7 @@ def test_load_documents_directory_includes_new_formats(tmp_path):
         "<html><body>HTML content</body></html>", encoding="utf-8"
     )
 
-    documents = load_documents(str(tmp_path))
+    documents = load_documents([str(tmp_path)])
 
     contents = " ".join(doc.page_content for doc in documents)
     assert "Docx content" in contents
@@ -240,7 +244,7 @@ def test_load_documents_loads_image_file(tmp_path):
     image_path = tmp_path / "scan.png"
     _make_ocr_image(image_path)
 
-    documents = load_documents(str(image_path))
+    documents = load_documents([str(image_path)])
 
     assert len(documents) == 1
     assert "HELLOWORLD" in _compact(documents[0].page_content)
@@ -258,14 +262,14 @@ def test_load_documents_ocr_fallback_for_scanned_pdf(tmp_path):
     page.insert_image(pymupdf.Rect(0, 0, 1000, 300), filename=str(image_path))
     doc.save(str(pdf_path))
 
-    documents = load_documents(str(pdf_path))
+    documents = load_documents([str(pdf_path)])
 
     assert len(documents) == 1
     assert "HELLOWORLD" in _compact(documents[0].page_content)
     assert documents[0].metadata["page"] == 1
 
 
-def test_load_documents_from_paths_loads_only_given_files(tmp_path):
+def test_load_documents_loads_only_the_given_files(tmp_path):
     first = tmp_path / "first.txt"
     second = tmp_path / "second.txt"
     ignored = tmp_path / "ignored.txt"
@@ -273,7 +277,7 @@ def test_load_documents_from_paths_loads_only_given_files(tmp_path):
     second.write_text("second content", encoding="utf-8")
     ignored.write_text("ignored content", encoding="utf-8")
 
-    documents = loaders.load_documents_from_paths([first, second])
+    documents = loaders.load_documents([first, second])
 
     assert [doc.page_content for doc in documents] == [
         "first content",
@@ -282,20 +286,34 @@ def test_load_documents_from_paths_loads_only_given_files(tmp_path):
     assert [doc.metadata["source"] for doc in documents] == [str(first), str(second)]
 
 
-def test_load_documents_from_paths_skips_missing_and_unsupported(tmp_path):
+def test_load_documents_skips_missing_when_on_missing_is_skip(tmp_path):
     present = tmp_path / "present.md"
     present.write_text("kept", encoding="utf-8")
     unsupported = tmp_path / "data.csv"
     unsupported.write_text("a,b", encoding="utf-8")
 
-    documents = loaders.load_documents_from_paths(
-        [present, unsupported, tmp_path / "gone.txt"]
+    documents = loaders.load_documents(
+        [present, unsupported, tmp_path / "gone.txt"], on_missing="skip"
     )
 
     assert [doc.page_content for doc in documents] == ["kept"]
 
 
-def test_load_documents_from_sources_reports_progress_per_file(tmp_path):
+def test_load_documents_raises_for_missing_file_by_default(tmp_path):
+    """The incremental caller opts into skipping; nobody else gets it silently."""
+    present = tmp_path / "present.md"
+    present.write_text("kept", encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError, match="not found"):
+        loaders.load_documents([present, tmp_path / "gone.txt"])
+
+
+def test_load_documents_rejects_an_unknown_on_missing(tmp_path):
+    with pytest.raises(ValueError, match="on_missing"):
+        loaders.load_documents([tmp_path], on_missing="ignore")
+
+
+def test_load_documents_reports_progress_per_file(tmp_path):
     dir_a = tmp_path / "a"
     dir_a.mkdir()
     (dir_a / "one.txt").write_text("Text A", encoding="utf-8")
@@ -303,9 +321,7 @@ def test_load_documents_from_sources_reports_progress_per_file(tmp_path):
     (tmp_path / "two.md").write_text("Text B", encoding="utf-8")
 
     messages: list[str] = []
-    load_documents_from_sources(
-        [str(dir_a), str(tmp_path / "two.md")], progress=messages.append
-    )
+    load_documents([str(dir_a), str(tmp_path / "two.md")], progress=messages.append)
 
     assert messages == [
         "[1/2] ingesting one.txt ...",
@@ -313,26 +329,57 @@ def test_load_documents_from_sources_reports_progress_per_file(tmp_path):
     ]
 
 
-def test_load_documents_from_paths_reports_progress_for_existing_files(tmp_path):
+def test_load_documents_progress_excludes_missing_files(tmp_path):
     first = tmp_path / "first.txt"
     first.write_text("first", encoding="utf-8")
     missing = tmp_path / "gone.txt"
 
     messages: list[str] = []
-    loaders.load_documents_from_paths([first, missing], progress=messages.append)
+    loaders.load_documents(
+        [first, missing], progress=messages.append, on_missing="skip"
+    )
 
     assert messages == ["[1/1] ingesting first.txt ..."]
 
 
-def test_loading_without_progress_does_not_walk_the_sources_twice(
-    tmp_path, monkeypatch
-):
-    """The i/N denominator costs a walk, so it is only counted when watched."""
+def test_loading_walks_the_sources_exactly_once(tmp_path, monkeypatch):
+    """One walk feeds both the loaded files and the i/N denominator."""
     (tmp_path / "one.txt").write_text("Text A", encoding="utf-8")
 
-    def fail_if_counted(path):
-        raise AssertionError("counted the sources with no progress callback")
+    walks = []
+    real_walk = loaders._walk_source
+    monkeypatch.setattr(
+        loaders,
+        "_walk_source",
+        lambda root, skipped: walks.append(root) or real_walk(root, skipped),
+    )
 
-    monkeypatch.setattr(loaders, "_supported_files", fail_if_counted)
+    assert load_documents([str(tmp_path)], progress=lambda *a, **k: None)
+    assert walks == [tmp_path]
 
-    assert load_documents_from_sources([str(tmp_path)])
+
+def test_overlapping_sources_load_each_file_once(tmp_path):
+    """The walk backing the loaders and the manifest must agree on the file set.
+
+    A file reachable through two source entries has one fingerprint, so it must
+    also produce one set of chunks — otherwise incremental indexing tracks a
+    corpus the DB does not contain.
+    """
+    from raggy.vectorstore import file_fingerprints
+
+    nested = tmp_path / "sub"
+    nested.mkdir()
+    (tmp_path / "a.txt").write_text("Text A", encoding="utf-8")
+    (nested / "b.txt").write_text("Text B", encoding="utf-8")
+
+    sources = [str(tmp_path), str(nested), str(nested / "b.txt")]
+
+    files = loaders.source_files(sources)
+    documents = load_documents(sources)
+    fingerprints = file_fingerprints(sources)
+
+    assert [str(path) for path in files] == sorted(fingerprints)
+    assert [doc.metadata["source"] for doc in documents] == [
+        str(path) for path in files
+    ]
+    assert [doc.page_content for doc in documents] == ["Text A", "Text B"]
