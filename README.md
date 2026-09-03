@@ -2,65 +2,84 @@
 
 A lightweight Retrieval-Augmented Generation (RAG) package built with
 LangChain and Chroma. It is local-first: your documents and the vector DB live
-entirely on your machine, embeddings run locally via Ollama, and answer
-generation can run locally (Ollama) or via a cloud provider's API. It supports
-common formats (PDF, Word, PowerPoint, plain text, images) and uses OCR
-automatically when needed.
+on your machine, embeddings run locally via Ollama, and answer
+generation can run either locally (Ollama) or via a cloud provider's API. It supports
+most common formats and uses OCR automatically when needed.
 
 These are all supported file formats (all other formats are ignored):
 
 `.pdf`, `.docx`, `.pptx`, `.txt`, `.md`, `.markdown`, `.html`, `.htm`, `.png`, `.jpg`, `.jpeg`, `.bmp`.
 
 
-## Initial setup
+## Prerequisites
 
-Ollama is required for running the local embedding model (which feeds the on-disk DB), and also local LLM (if needed). To install Ollama run:
-
+Ollama is required for running the local embedding model (which feeds the on-disk vector DB), and also local LLM (if needed). To install Ollama:
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
 ```
 
-Both the embedding model and the generation LLM (when generation is local via Ollama) are pulled automatically on first use using the names from `config.yaml` — so no manual pull is needed.
+You also may need to start Ollama explicitly:
+
+```bash
+ollama serve
+```
 
 If API key will be used for accessing LLM remotely, a standard environment variable needs to be set (which is one of):
 
 ```bash
-export GEMINI_API_KEY=...       # llm_provider: "google"
-export OPENAI_API_KEY=...       # llm_provider: "openai"
-export ANTHROPIC_API_KEY=...    # llm_provider: "anthropic"
+export GEMINI_API_KEY=...
+export OPENAI_API_KEY=...
+export ANTHROPIC_API_KEY=...
 ```
 
-In this case `config.yaml` needs to be updated with proper `llm_provider` (`"openai"`, `"anthropic"`, `"google"`) and `llm_model` (e.g. `"gemini-3.5-flash"`)
+You also need Python version 3.10 or higher, having `uv` installed is recommended:
 
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
 ## Installing `raggy`
 
-Requires Python 3.10 or newer.
-
-You can install with `uv` (recommended):
+Clone the repo:
 
 ```bash
-uv tool install -e .
+git clone https://github.com/paulknysh/raggy.git && cd raggy
 ```
 
-Or with pip:
+To install CLI only:
 
 ```bash
+# with uv
+uv tool install -e .
+# with pip
 pip install -e .
 ```
 
-Running linting/formatting (using ruff), and unit tests (using pytest) is done in a single command:
+To use raggy programmatically (as a library), or to modify/test code:
 
 ```bash
+uv sync
+source .venv/bin/activate
+
+# to run lint/format/tests
 make sure
 ```
 
 ## Usage
 
-First, create your own git-ignored user config. This is only done once. For detailed overview of all config parameters see [Configuration](#configuration).
+First, run this command:
 
 ```bash
 make config
+```
+
+It creates your own user config (`config.yaml`). This is where all your document paths, LLM proviers, models, and other execution parameters live. For detailed overview of all config parameters see [Configuration](#configuration). Your `sources` section will look like this:
+
+```
+sources:
+  - "/Users/xyz/Documents/docs" # folder
+  - "/Users/xyz/Downloads/docs_1" # folder
+  - "/Users/xyz/Desktop/docs_2/abc.pdf" # file
 ```
 
 To start CLI type:
@@ -69,17 +88,17 @@ To start CLI type:
 raggy
 ```
 
-<img src="assets/cli_demo.png">
+**Important:** On the first run CLI automatically pulls Ollama models listed in `config.yaml` and indexes your
+documents -- this might take a while, depending on models chosen, document count/size and whether OCR is needed (scans, images etc)
 
-**Important:** On the first run CLI pulls Ollama models listed in `config.yaml` and indexes your
-documents -- this might take a while, depending on document count/size and whether OCR is needed (scans, images etc)
+<img src="assets/cli_demo.png">
 
 You can also use it programmatically:
 
 ```python
 from raggy import run_pipeline, source_label
 
-query = "What GPU hardware was used to run the TS-RAG experiments?"
+query = "What is TS-RAG?"
 
 response, retrieved_docs = run_pipeline(query)
 
@@ -97,14 +116,14 @@ working directory when you run the `raggy` CLI or import the library):
 
 | Setting | Description |
 | --- | --- |
-| `sources` | **list of source directories and/or files** |
+| `sources` | list of source directories and/or files |
 | `persist_directory` | location where the DB itself is stored |
 | `embedding_model` | Ollama embedding model (e.g. `nomic-embed-text`) |
 | `chunk_size` | chunk size in characters |
 | `chunk_overlap` | character overlap between adjacent chunks |
 | `batch_size` | max number of chunks embedded per batch into Chroma (default `100`); the number of batches is derived dynamically from the chunk count |
 | `llm_provider` | where generation runs: `ollama` (local, default) or `openai`/`anthropic`/`google` (via API) |
-| `llm_model` | chat model for generation (e.g. `phi4-mini` locally, or a remote model name like `gemini-3.5-flash`) |
+| `llm_model` | chat model for generation (e.g. `phi4-mini` locally, or a remote model name like `gemini-3.7-flash`) |
 | `temperature` | LLM sampling temperature |
 | `retrieve_k` | number of chunks returned by the first-stage retrieval |
 | `hybrid_search` | whether to fuse dense retrieval with a lexical BM25 (`bm25s`) pass via reciprocal rank fusion (on by default) |
@@ -199,7 +218,7 @@ re-reading of source files.
 - [x] Hybrid retrieval, tuning config defaults
 - [x] Incremental indexing (only re-embed files that changed)
 - [ ] UX/UI tuning of CLI (improved commands/statuses etc)
-- [ ] Performance optimizations
+- [ ] Performance optimizations (DB creation, pipeline itself)
 
 ## License
 
