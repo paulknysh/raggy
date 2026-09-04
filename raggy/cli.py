@@ -326,7 +326,7 @@ def _run_turn(
 
 def run_chat(config_path: str = "config.yaml") -> None:
     console.print(
-        Panel.fit(
+        Panel(
             f"[{ACCENT}]{LOGO}[/{ACCENT}]\n\n"
             "using config located @ "
             f"[{ACCENT}]{Path(config_path).resolve()}[/{ACCENT}]\n\n"
@@ -334,6 +334,9 @@ def run_chat(config_path: str = "config.yaml") -> None:
             f"[{ACCENT}]/exit[/{ACCENT}]  : leave",
             border_style=ACCENT,
             box=SQUARE,
+            # Same width as the answer panel and citations table, so the banner
+            # and everything printed after it share one left and right edge.
+            width=_body_width(),
         )
     )
     console.print()
