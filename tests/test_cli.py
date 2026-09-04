@@ -384,7 +384,7 @@ def test_current_db_announces_nothing(monkeypatch, captured_console, stub_config
 def test_main_silences_the_bm25s_debug_logger(monkeypatch):
     """bm25s sets its own logger to DEBUG at import; the CLI must undo that."""
     logging.getLogger("bm25s").setLevel(logging.DEBUG)
-    monkeypatch.setattr(sys, "argv", ["raggy"])
+    monkeypatch.setattr(sys, "argv", ["raggy", "config.yaml"])
     monkeypatch.setattr(cli, "run_chat", lambda *args: None)
 
     cli.main()
@@ -392,13 +392,19 @@ def test_main_silences_the_bm25s_debug_logger(monkeypatch):
     assert logging.getLogger("bm25s").level == logging.WARNING
 
 
-def test_config_flag_defaults_to_working_directory_config():
-    assert cli._parse_args([]).config == "config.yaml"
+def test_config_path_is_required():
+    """A config path is the one argument the CLI cannot run without."""
+    with pytest.raises(SystemExit):
+        cli._parse_args([])
 
 
-def test_main_passes_the_config_flag_to_the_chat(monkeypatch):
+def test_config_path_is_read_from_the_first_argument():
+    assert cli._parse_args(["/tmp/other.yaml"]).config == "/tmp/other.yaml"
+
+
+def test_main_passes_the_config_path_to_the_chat(monkeypatch):
     seen = []
-    monkeypatch.setattr(sys, "argv", ["raggy", "--config", "/tmp/other.yaml"])
+    monkeypatch.setattr(sys, "argv", ["raggy", "/tmp/other.yaml"])
     monkeypatch.setattr(cli, "run_chat", lambda config_path: seen.append(config_path))
 
     cli.main()
@@ -407,7 +413,7 @@ def test_main_passes_the_config_flag_to_the_chat(monkeypatch):
 
 
 def test_turn_runs_against_the_given_config(monkeypatch, captured_console):
-    """Every config reader in a turn is pointed at the CLI's --config path."""
+    """Every config reader in a turn is pointed at the CLI's config path."""
     seen = {}
 
     def fake_stream(query, doc_sink=None, chat_history=None, config_path=None):

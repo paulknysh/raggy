@@ -1,10 +1,11 @@
 # Database & Storage Configuration
 sources:
-  - ./sample_docs # default folder
+  - ./sample_docs # demo folder
   # - /Users/xyz/Downloads/my_docs1 # additional folder
   # - /Users/xyz/Desktop/my_docs2/abc.pdf # additional file
 
-persist_directory: "./db"
+persist_directory: ./db # /Users/xyz/db
+
 embedding_model: "nomic-embed-text"
 chunk_size: 500
 chunk_overlap: 100

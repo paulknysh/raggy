@@ -1,30 +1,26 @@
 # raggy
 
-A lightweight Retrieval-Augmented Generation (RAG) package built with
-LangChain and Chroma. It is local-first: your documents and the vector DB live
-on your machine, embeddings run locally via Ollama, and answer
-generation can run either locally (Ollama) or via a cloud provider's API. It supports
-most common formats and uses OCR automatically when needed.
+A lightweight Retrieval-Augmented Generation (RAG) CLI tool built with LangChain, Chroma, and Ollama. Hybrid database (vector + BM25 index) and embedding generation run fully locally. Answer generation can run either via a local LLM or using a cloud provider's API. The tool supports most common document formats and uses OCR automatically when needed.
 
-These are all supported file formats (all other formats are ignored):
+These are all currently supported file formats (all other formats are ignored):
 
 `.pdf`, `.docx`, `.pptx`, `.txt`, `.md`, `.markdown`, `.html`, `.htm`, `.png`, `.jpg`, `.jpeg`, `.bmp`.
 
 
 ## Prerequisites
 
-Ollama is required for running the local embedding model (which feeds the on-disk vector DB), and also local LLM (if needed). To install Ollama:
+Ollama is required for running the local embedding model (which feeds the on-disk vector DB), and also a local LLM (if needed). To install Ollama:
+
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
-```
 
-You also may need to start Ollama explicitly:
-
-```bash
+# may need to start ollama after installation using the app or:
+ollama
+# or
 ollama serve
 ```
 
-If API key will be used for accessing LLM remotely, a standard environment variable needs to be set (which is one of):
+If an API key will be used for accessing an LLM remotely, a standard environment variable needs to be set (one of):
 
 ```bash
 export GEMINI_API_KEY=...
@@ -32,13 +28,13 @@ export OPENAI_API_KEY=...
 export ANTHROPIC_API_KEY=...
 ```
 
-You also need Python version 3.10 or higher, having `uv` installed is recommended:
+Python 3.10 or newer is required; installing `uv` is recommended:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-## Installing `raggy`
+## Installation
 
 Clone the repo:
 
@@ -46,26 +42,26 @@ Clone the repo:
 git clone https://github.com/paulknysh/raggy.git && cd raggy
 ```
 
-To install CLI only:
+To install the CLI tool only:
 
 ```bash
 # with uv
 uv tool install -e .
-# with pip
-pip install -e .
+
+# with pipx
+pipx install -e .
 ```
 
-To use raggy programmatically (as a library), or to modify/test code:
+To be able to use raggy programmatically (as a library):
 
 ```bash
 uv sync
-source .venv/bin/activate
 
-# to run lint/format/tests
+# if you modify/test code, this runs lint/format/tests
 make sure
 ```
 
-## Usage
+## Usage (CLI)
 
 First, run this command:
 
@@ -73,40 +69,36 @@ First, run this command:
 make config
 ```
 
-It creates your own user config (`config.yaml`). This is where all your document paths, LLM proviers, models, and other execution parameters live. For detailed overview of all config parameters see [Configuration](#configuration). Your `sources` section will look like this:
+It creates your own user config (`config.yaml`) where all your execution parameters live. For a detailed overview of all config parameters, see [Configuration](#configuration).
 
-```
-sources:
-  - /Users/xyz/Documents/docs # folder
-  - /Users/xyz/Downloads/docs_1 # folder
-  - /Users/xyz/Desktop/docs_2/abc.pdf # file
-```
+`config.yaml` comes with defaults you can test. Populate `sources` (your input folders/files) and `persist_directory` (DB location) sections with your preferred paths.
 
-To start CLI type (by default always uses `config.yaml` created inside repo):
+**Important:** Relative paths in `config.yaml` resolve against the current working directory, so keep that in mind if you want to run CLI tool from other locations. To be safe, just always use absolute paths in config.
+
+To start the CLI, use the `raggy` command followed by the path to your config file:
 
 ```bash
-raggy
+raggy config.yaml
 ```
 
-To run with a config file located elsewhere, pass `--config`:
+The path can point anywhere (e.g. `raggy path/to/other_config.yaml`), so several configs can live side by side:
 
-```bash
-raggy --config path/to/config.yaml
-```
+**Important:** CLI automatically pulls all models listed in `config.yaml` and (re-)indexes your documents -- this might take a while on the first run, depending on models chosen, document count/size and whether OCR is needed (scans, images etc).
 
-**Important:** On the first run CLI automatically pulls Ollama models listed in `config.yaml` and indexes your
-documents -- this might take a while, depending on models chosen, document count/size and whether OCR is needed (scans, images etc)
+Below is a screenshot of the CLI. For each query, it returns an answer, citations, their corresponding relevance scores, and locations:
 
 <img src="assets/cli_demo.png">
 
-You can also use it programmatically:
+## Usage (programmatic)
+
+Here is the basic snippet you can run via `uv run snippet.py`:
 
 ```python
 from raggy import run_pipeline, source_label
 
 query = "What is TS-RAG?"
 
-response, retrieved_docs = run_pipeline(query)
+response, retrieved_docs = run_pipeline(query, config_path="config.yaml")
 
 print(f"\n*** RESPONSE:\n\n{response}\n\n***")
 
@@ -117,10 +109,7 @@ for i, doc in enumerate(retrieved_docs, 1):
 
 ## Configuration
 
-All runtime settings are read from `config.yaml` (the file must be present in the
-working directory when you run the `raggy` CLI or import the library, unless you
-point at another one with `raggy --config PATH` or the `config_path` argument of
-`run_pipeline`):
+All runtime settings available in config file:
 
 | Setting | Description |
 | --- | --- |
@@ -144,14 +133,11 @@ point at another one with `raggy --config PATH` or the `config_path` argument of
 
 ## Demo dataset
 
-This article (https://arxiv.org/abs/2608.06223v1) is used here for testing. It's an 8-page document -- each page
-is saved in different file formats (including PDF, plaintext, images, MS Word) and saved inside
-`sample_docs` directory. This directory is specified in `config.yaml` by default.
+This article (https://arxiv.org/abs/2608.06223v1) is used here for testing. It's an 8-page document -- each page is saved in different file formats (including PDF, plaintext, images, MS Word) and saved inside the `sample_docs` directory. This directory is specified in `config.yaml` by default.
 
 ## Demo eval
 
-`eval` folder currently contains simple Q&A dataset to test pipeline performance on demo dataset end-to-end.
-To run the test, start the Ollama service with the embeddings always local and models pulled automatically, then run:
+`eval` folder currently contains a basic harness to test pipeline performance on the demo dataset. You can run it by:
 
 ```bash
 uv run eval/run_eval.py
@@ -162,8 +148,7 @@ It computes basic retrieval/generation metrics and produces a summary (both prin
 
 ## The DB management
 
-The DB lives in the directory configured by `persist_directory`
-(default `./db`), which holds both Chroma vector store and BM25 index.
+DB creates/updates itself automatically, so you don't need to think about it. Below is just a high-level overview of the mechanics.
 
 ### How the DB is created
 
@@ -187,46 +172,29 @@ The `manifest.yaml` is cheap to recompute, so for every new run it is computed a
 compared against the existing one. What happens next depends on what changed:
 
 - **Incremental update (the common case)** — the source files changed but
-  `chunk_size`, `chunk_overlap`, and `embedding_model` did not. Comparing the two
-  `files` maps names exactly which files were added, modified, or deleted. Chunks
-  belonging to deleted and modified files are dropped from Chroma, and only added
-  and modified files are re-loaded and embedded. Untouched files are never
+  `chunk_size`, `chunk_overlap`, and `embedding_model` did not. In this case, only added
+  and modified files are reloaded and embedded. Untouched files are never
   re-embedded, so editing one file in a large corpus costs one file's worth of work.
 - **Full rebuild** — `chunk_size`, `chunk_overlap`, or `embedding_model` changed
   (every stored vector is then invalid), or there is no manifest yet. The persist
-  directory is wiped and everything is indexed from scratch. Note that a manifest
-  written before incremental indexing existed also triggers one full rebuild.
+  directory is wiped, and everything is indexed from scratch.
 
 The BM25 index has no incremental update path, so it is rebuilt after every update —
 from the chunks already stored in Chroma, which needs no embedding calls and no
-re-reading of source files.
+re-reading of source files. This should be very fast anyway.
 
-
-## Notes
-
-- `PyPDFLoader` parses PDFs page-by-page (each Document carries a `page` key);
-  PowerPoint decks are parsed slide-by-slide (also exposed as `page`); plain-text
-  files (`txt`/`md`/`markdown`) get approximate `start_line`/`end_line`
-  annotations via `annotate_line_numbers`. HTML, Word documents (`.docx`) and
-  images carry no location metadata — HTML because `BSHTMLLoader` returns the
-  extracted text rather than the file, so lines counted in it do not match the
-  source; DOCX because it has no native page boundaries (Word's pagination can't
-  be reproduced reliably); images because they have no meaningful lines.
-- Image files (`.png`/`.jpg`/`.jpeg`/`.bmp`) are OCR'd with RapidOCR (runs fully
-  on-device via ONNX Runtime); PDFs with no extractable text layer are detected
-  and automatically OCR'd page-by-page as well.
-- The `langchain-community` loader deprecation warning is suppressed in the
-  pytest config.
 
 ## TODOs
 
-- [x] Support of popular LLM providers via API keys
+- [x] Incremental indexing (only re-embed files that changed)
+- [x] Hybrid retrieval, tuning config defaults
+- [x] Support for popular LLM providers via API keys
 - [x] Conversation memory in chat mode
 - [x] Pydantic validation of config file
-- [x] Hybrid retrieval, tuning config defaults
-- [x] Incremental indexing (only re-embed files that changed)
-- [ ] UX/UI tuning of CLI (improved commands/statuses etc)
-- [ ] Performance optimizations (DB creation, pipeline itself)
+- [ ] UX/UI tuning of CLI (improved commands/statuses, etc)
+- [ ] Performance optimizations (DB creation/update, pipeline execution)
+
+If something cool is missing, feel free to open an issue or a PR.
 
 ## License
 

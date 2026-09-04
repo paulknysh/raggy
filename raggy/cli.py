@@ -2,10 +2,15 @@
 
 import argparse
 import logging
-import readline  # noqa: F401  enables arrow-key editing/history in input()
 import textwrap
+from pathlib import Path
 
-from rich.box import SIMPLE_HEAD
+try:
+    import readline  # noqa: F401  enables arrow-key editing/history in input()
+except ImportError:  # pragma: no cover - readline is unavailable on Windows
+    pass
+
+from rich.box import SIMPLE_HEAD, SQUARE
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
@@ -27,7 +32,16 @@ from .raggy import ensure_models, load_config, refresh_db, run_pipeline_stream
 logger = logging.getLogger(__name__)
 
 ACCENT = "blue"
-STATUS_ACCENT = "blue"
+
+# Answers and citations are prose, and prose stops being readable somewhere
+# around 100 columns: on a wide terminal an unbounded panel runs 25+ words to
+# the line. Both blocks are measured against this so they also line up with
+# each other.
+MAX_WIDTH = 100
+
+# A citation is a pointer, not the passage: enough characters to recognize the
+# chunk the answer came from, while keeping every row to a line or two.
+MAX_SNIPPET_CHARS = 140
 
 MEMORY_TURNS = 8
 
@@ -90,7 +104,7 @@ class _ProgressLine:
             self._show_bar(message, completed or 0, total)
 
     def _show_message(self, message: str) -> None:
-        text = Text(message, style=STATUS_ACCENT)
+        text = Text(message, style=ACCENT)
         if self._status is None:
             self._status = console.status(text)
             self._status.start()
@@ -101,7 +115,7 @@ class _ProgressLine:
         if self._bar is None:
             self._bar = Progress(
                 SpinnerColumn(),
-                TextColumn("{task.description}", style=STATUS_ACCENT),
+                TextColumn("{task.description}", style=ACCENT),
                 BarColumn(complete_style=ACCENT, finished_style=ACCENT),
                 DownloadColumn(),
                 console=console,
@@ -130,12 +144,19 @@ class _ProgressLine:
         self._close_bar()
 
 
+def _body_width() -> int:
+    """Width shared by the answer and its citations, honoring narrow terminals."""
+    return min(console.width, MAX_WIDTH)
+
+
 def _answer_panel(text: str) -> Panel:
     return Panel(
         Markdown(text),
-        title=f"[bold {ACCENT}]Answer[/bold {ACCENT}]",
+        title=f"[{ACCENT}]Answer[/{ACCENT}]",
         border_style=ACCENT,
+        box=SQUARE,
         padding=(1, 2),
+        width=_body_width(),
     )
 
 
@@ -146,23 +167,25 @@ def print_citations(retrieved_docs) -> None:
     has_scores = any(SCORE_KEY in doc.metadata for doc in retrieved_docs)
 
     table = Table(
-        title=f"[bold {ACCENT}]Citations[/bold {ACCENT}]",
-        title_style="bold",
+        title=f"[{ACCENT}]Citations[/{ACCENT}]",
+        # Explicit: rich's default table title style is italic.
+        title_style=ACCENT,
         border_style=ACCENT,
         header_style=ACCENT,
         box=SIMPLE_HEAD,
         pad_edge=False,
+        width=_body_width(),
     )
     table.add_column("#", justify="right", style=ACCENT)  # width=3
     table.add_column("Source", style=ACCENT)
     if has_scores:
         table.add_column("Score", justify="right", style=ACCENT)
-    table.add_column("Snippet", style="white")
+    table.add_column("Snippet")
 
     for i, doc in enumerate(retrieved_docs, 1):
         snippet = " ".join(doc.page_content.split())
-        if len(snippet) > 140:
-            snippet = snippet[:140] + "..."
+        if len(snippet) > MAX_SNIPPET_CHARS:
+            snippet = snippet[:MAX_SNIPPET_CHARS] + "..."
         score = doc.metadata.get(SCORE_KEY)
         score_cell = f"{score:.3f}" if score is not None else ""
         if has_scores:
@@ -250,7 +273,7 @@ def _run_turn(
                 ),
                 config_path=config_path,
             )
-        with console.status(f"[{STATUS_ACCENT}]Retrieving...[/{STATUS_ACCENT}]"):
+        with console.status(f"[{ACCENT}]Retrieving...[/{ACCENT}]"):
             stream = run_pipeline_stream(
                 query,
                 doc_sink=doc_sink,
@@ -305,11 +328,12 @@ def run_chat(config_path: str = "config.yaml") -> None:
     console.print(
         Panel.fit(
             f"[{ACCENT}]{LOGO}[/{ACCENT}]\n\n"
-            "Specify source folders/files and other parameters in "
-            f"[bold]{config_path}[/bold]\n\n"
-            "[bold]/clear[/bold] to reset the conversation memory\n"
-            "[bold]/exit[/bold] to leave",
+            "using config located @ "
+            f"[{ACCENT}]{Path(config_path).resolve()}[/{ACCENT}]\n\n"
+            f"[{ACCENT}]/clear[/{ACCENT}] : reset conversation memory\n"
+            f"[{ACCENT}]/exit[/{ACCENT}]  : leave",
             border_style=ACCENT,
+            box=SQUARE,
         )
     )
     console.print()
@@ -349,13 +373,13 @@ def run_chat(config_path: str = "config.yaml") -> None:
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="raggy", description="Interactive chat CLI for raggy."
+        prog="raggy",
+        description="Interactive chat CLI for raggy.",
     )
     parser.add_argument(
-        "--config",
-        default="config.yaml",
-        metavar="PATH",
-        help="path to the config file (default: config.yaml in the working directory)",
+        "config",
+        metavar="CONFIG",
+        help="path to the config file (e.g. config.yaml)",
     )
     return parser.parse_args(argv)
 
