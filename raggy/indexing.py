@@ -37,7 +37,7 @@ class IndexPlan:
     """What must happen to bring the DB in line with the current sources.
 
     ``full_rebuild`` means every stored embedding is invalid (no manifest, or a
-    chunking/embedding-model change), so the persist dir is wiped and rebuilt.
+    chunking/embedding-model change), so the DB dir is wiped and rebuilt.
     Otherwise the three file lists describe an incremental update.
     """
 
@@ -57,16 +57,16 @@ def get_embeddings(model_name: str) -> OllamaEmbeddings:
     return OllamaEmbeddings(model=model_name)
 
 
-def get_vectorstore(persist_directory: str, embedding_model: str) -> Chroma:
+def get_vectorstore(db_directory: str, embedding_model: str) -> Chroma:
     """Initialize and return the Chroma vector store."""
     embeddings = get_embeddings(embedding_model)
-    return Chroma(persist_directory=persist_directory, embedding_function=embeddings)
+    return Chroma(persist_directory=db_directory, embedding_function=embeddings)
 
 
 def close_vectorstore(vectorstore: Chroma) -> None:
     """Release the client's underlying DB connection.
 
-    Chroma holds an open handle to ``chroma.sqlite3``. Deleting the persist
+    Chroma holds an open handle to ``chroma.sqlite3``. Deleting the DB
     dir while that handle is open leaves a stale connection to a removed
     inode, and the next write fails with "attempt to write a readonly
     database". Call this before wiping/rebuilding the DB from source.
@@ -97,10 +97,10 @@ def _split_documents(
 def _embed_in_batches(
     splits: list[Document],
     vectorstore: Chroma,
-    batch_size: int,
+    embed_batch_size: int,
     progress: ProgressCallback | None = None,
 ) -> None:
-    """Embed ``splits`` into Chroma in batches of at most ``batch_size`` chunks.
+    """Embed ``splits`` into Chroma in batches of at most ``embed_batch_size`` chunks.
 
     The number of batches is derived dynamically from the total chunk count, so
     the setting stays sensible regardless of dataset size.
@@ -110,15 +110,16 @@ def _embed_in_batches(
     displays would fight over the same terminal line.
     """
     total_splits = len(splits)
-    n_batches = math.ceil(total_splits / batch_size)
+    n_batches = math.ceil(total_splits / embed_batch_size)
     batch_sizes = [
-        min(batch_size, total_splits - i * batch_size) for i in range(n_batches)
+        min(embed_batch_size, total_splits - i * embed_batch_size)
+        for i in range(n_batches)
     ]
 
     logger.info(
         "Embedding chunks into Chroma (%d batches of <= %d)...",
         n_batches,
-        batch_size,
+        embed_batch_size,
     )
 
     remaining = list(splits)
@@ -143,8 +144,8 @@ def create_index(
     vectorstore: Chroma,
     chunk_size: int,
     chunk_overlap: int,
-    batch_size: int,
-    persist_directory: str,
+    embed_batch_size: int,
+    db_directory: str,
     progress: ProgressCallback | None = None,
 ) -> None:
     """Build the index from scratch: load, split, and embed every source file.
@@ -157,7 +158,7 @@ def create_index(
     supported files.
 
     Also builds a BM25 index over the same chunks and persists it to
-    ``<persist_directory>/bm25_index/`` for hybrid retrieval.
+    ``<db_directory>/bm25_index/`` for hybrid retrieval.
 
     ``progress`` receives one status line per file read and per embedded batch.
     """
@@ -174,8 +175,8 @@ def create_index(
         logger.warning("No content found to split and index.")
         return
 
-    _embed_in_batches(splits, vectorstore, batch_size, progress)
-    save_bm25_index(splits, persist_directory)
+    _embed_in_batches(splits, vectorstore, embed_batch_size, progress)
+    save_bm25_index(splits, db_directory)
 
 
 # Chroma binds one SQL variable per returned row, and SQLite caps a statement
@@ -222,8 +223,8 @@ def update_index(
     plan: IndexPlan,
     chunk_size: int,
     chunk_overlap: int,
-    batch_size: int,
-    persist_directory: str,
+    embed_batch_size: int,
+    db_directory: str,
     progress: ProgressCallback | None = None,
 ) -> None:
     """Apply ``plan`` to an existing DB without re-embedding untouched files.
@@ -246,11 +247,11 @@ def update_index(
         docs = load_documents(reindexed, progress=progress, on_missing="skip")
         splits = _split_documents(docs, chunk_size, chunk_overlap)
         if splits:
-            _embed_in_batches(splits, vectorstore, batch_size, progress)
+            _embed_in_batches(splits, vectorstore, embed_batch_size, progress)
         else:
             logger.warning("No content found in the new/changed files.")
 
-    save_bm25_index(_collection_chunks(vectorstore), persist_directory)
+    save_bm25_index(_collection_chunks(vectorstore), db_directory)
 
 
 # Read in 1 MiB blocks rather than slurping whole files: the corpus can
@@ -292,29 +293,29 @@ def file_fingerprints(sources: list[str]) -> dict[str, str]:
     return fingerprints
 
 
-def _load_manifest(persist_directory: str) -> dict | None:
+def _load_manifest(db_directory: str) -> dict | None:
     """Read the build manifest (if any) from the DB directory."""
-    manifest_path = Path(persist_directory) / MANIFEST_FILENAME
+    manifest_path = Path(db_directory) / MANIFEST_FILENAME
     if not manifest_path.exists():
         return None
     return yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
 
 
-def _write_manifest(persist_directory: str, index_cfg: dict) -> None:
+def _write_manifest(db_directory: str, index_cfg: dict) -> None:
     """Persist the index-affecting config so later runs can detect drift."""
-    Path(persist_directory).mkdir(parents=True, exist_ok=True)
-    manifest_path = Path(persist_directory) / MANIFEST_FILENAME
+    Path(db_directory).mkdir(parents=True, exist_ok=True)
+    manifest_path = Path(db_directory) / MANIFEST_FILENAME
     manifest_path.write_text(yaml.safe_dump(index_cfg), encoding="utf-8")
 
 
-def _reset_persist_directory(persist_directory: str) -> None:
-    """Physically delete all contents of the persist directory.
+def _reset_db_directory(db_directory: str) -> None:
+    """Physically delete all contents of the DB directory.
 
     ``reset_collection()`` only removes records but leaves stale segment /
-    version files behind in the persist dir, so repeated rebuilds accumulate
+    version files behind in the DB dir, so repeated rebuilds accumulate
     garbage. A full wipe of the directory is the clean way to rebuild.
     """
-    root = Path(persist_directory)
+    root = Path(db_directory)
     if not root.exists():
         return
     for child in root.iterdir():
@@ -344,7 +345,7 @@ def build_index_config(
     }
 
 
-def plan_index_update(persist_directory: str, index_cfg: dict) -> IndexPlan:
+def plan_index_update(db_directory: str, index_cfg: dict) -> IndexPlan:
     """Diff the current index config against the stored manifest.
 
     A missing manifest, a manifest without per-file fingerprints (written by an
@@ -352,7 +353,7 @@ def plan_index_update(persist_directory: str, index_cfg: dict) -> IndexPlan:
     rebuild. Everything else is reduced to the set of files that were added,
     modified, or deleted since the last build.
     """
-    stored = _load_manifest(persist_directory)
+    stored = _load_manifest(db_directory)
     if stored is None:
         return IndexPlan(full_rebuild=True)
 
@@ -375,22 +376,22 @@ def plan_index_update(persist_directory: str, index_cfg: dict) -> IndexPlan:
     )
 
 
-def db_needs_rebuild(persist_directory: str, index_cfg: dict) -> bool:
+def db_needs_rebuild(db_directory: str, index_cfg: dict) -> bool:
     """Return True if the stored manifest no longer matches the current sources.
 
     Covers both kinds of staleness (full rebuild and incremental update); use
     ``plan_index_update`` when the distinction matters.
     """
-    return plan_index_update(persist_directory, index_cfg).has_changes
+    return plan_index_update(db_directory, index_cfg).has_changes
 
 
 def initialize_db(
-    persist_directory: str,
+    db_directory: str,
     embedding_model: str,
     sources: list[str],
     chunk_size: int,
     chunk_overlap: int,
-    batch_size: int,
+    embed_batch_size: int,
     progress: ProgressCallback | None = None,
 ) -> Chroma:
     """
@@ -398,7 +399,7 @@ def initialize_db(
 
     If the database is empty, or ``chunk_size``/``chunk_overlap``/
     ``embedding_model`` no longer match the persisted manifest.yaml, the
-    persist directory is wiped and the docs are re-indexed from scratch. If
+    DB directory is wiped and the docs are re-indexed from scratch. If
     only the source files changed, the DB is updated incrementally: just the
     added and modified files are embedded and the removed ones dropped.
 
@@ -407,20 +408,20 @@ def initialize_db(
     """
     # Config that determines the index content; only these drive re-indexing.
     index_cfg = build_index_config(sources, chunk_size, chunk_overlap, embedding_model)
-    plan = plan_index_update(persist_directory, index_cfg)
+    plan = plan_index_update(db_directory, index_cfg)
 
     if plan.full_rebuild:
         logger.info(
             "Detected an index config change (chunk_size, chunk_overlap, or "
             "embedding_model); rebuilding DB from source documents."
         )
-        # Wipe the persist dir BEFORE opening any Chroma connection. Deleting
+        # Wipe the DB dir BEFORE opening any Chroma connection. Deleting
         # the sqlite files while a client holds an open handle leaves a stale
         # connection to a removed inode, which fails on the next write
         # ("attempt to write a readonly database").
-        _reset_persist_directory(persist_directory)
+        _reset_db_directory(db_directory)
 
-    vectorstore = get_vectorstore(persist_directory, embedding_model)
+    vectorstore = get_vectorstore(db_directory, embedding_model)
     collection_count = vectorstore._collection.count()
 
     if plan.full_rebuild or collection_count == 0:
@@ -429,12 +430,12 @@ def initialize_db(
             vectorstore=vectorstore,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
-            batch_size=batch_size,
-            persist_directory=persist_directory,
+            embed_batch_size=embed_batch_size,
+            db_directory=db_directory,
             progress=progress,
         )
-        _write_manifest(persist_directory, index_cfg)
-        logger.info("Successfully saved DB to '%s'.", persist_directory)
+        _write_manifest(db_directory, index_cfg)
+        logger.info("Successfully saved DB to '%s'.", db_directory)
     elif plan.has_changes:
         logger.info(
             "Detected source changes (%d added, %d modified, %d deleted); "
@@ -448,13 +449,13 @@ def initialize_db(
             plan=plan,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
-            batch_size=batch_size,
-            persist_directory=persist_directory,
+            embed_batch_size=embed_batch_size,
+            db_directory=db_directory,
             progress=progress,
         )
-        _write_manifest(persist_directory, index_cfg)
-        logger.info("Successfully updated DB in '%s'.", persist_directory)
+        _write_manifest(db_directory, index_cfg)
+        logger.info("Successfully updated DB in '%s'.", db_directory)
     else:
-        logger.info("Loaded existing vector DB from '%s'.", persist_directory)
+        logger.info("Loaded existing vector DB from '%s'.", db_directory)
 
     return vectorstore

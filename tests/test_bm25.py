@@ -65,3 +65,15 @@ def test_save_bm25_index_removes_index_for_empty_corpus(tmp_path):
 
     save_bm25_index([], str(tmp_path))
     assert not (tmp_path / BM25_INDEX_DIRNAME).exists()
+
+
+def test_bm25_retriever_clamps_k_to_corpus_size(tmp_path):
+    # bm25s raises if k exceeds the number of indexed chunks, so a retrieval
+    # budget larger than a small corpus must be clamped rather than blow up.
+    splits = [Document(page_content="the quick brown fox", metadata={})]
+    save_bm25_index(splits, str(tmp_path))
+
+    retriever = get_bm25_retriever(str(tmp_path), k=25)
+    docs = retriever.invoke("quick")
+
+    assert len(docs) == 1

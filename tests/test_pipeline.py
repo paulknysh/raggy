@@ -65,32 +65,46 @@ def _docs(*contents):
     return [Document(page_content=c) for c in contents]
 
 
-def test_get_retriever_uses_vectorstore_configuration():
-    captured = {}
+@pytest.mark.parametrize(
+    ("retrieve_k", "alpha", "expected"),
+    [
+        (50, 0.5, (25, 25)),
+        (50, 1.0, (50, 0)),
+        (50, 0.0, (0, 50)),
+        (10, 0.7, (7, 3)),
+        (10, 0.25, (2, 8)),
+        # A share small enough to round to zero switches that arm off, the
+        # same as asking for the extreme outright.
+        (50, 0.001, (0, 50)),
+        (50, 0.999, (50, 0)),
+    ],
+)
+def test_split_retrieval_budget(retrieve_k, alpha, expected):
+    assert pipeline.split_retrieval_budget(retrieve_k, alpha) == expected
+
+
+@pytest.mark.parametrize("alpha", [0.0, 0.25, 0.5, 0.75, 1.0])
+def test_split_retrieval_budget_always_sums_to_retrieve_k(alpha):
+    assert sum(pipeline.split_retrieval_budget(37, alpha)) == 37
+
+
+def _retriever_probe(monkeypatch, captured, bm25=None):
+    """Stub out everything get_retriever builds, recording the arguments."""
 
     class FakeVectorstore:
         def as_retriever(self, **kwargs):
-            captured.update(kwargs)
-            return "retriever"
+            captured["dense"] = kwargs
+            return "dense-retriever"
 
-    result = pipeline.get_retriever(
-        FakeVectorstore(),
-        retrieve_k=8,
-        rerank_model="test-reranker",
-        hybrid_search=False,
-    )
+    class FakeEnsemble:
+        def __init__(self, **kwargs):
+            captured["ensemble"] = kwargs
 
-    assert result == "retriever"
-    assert captured == {"search_type": "similarity", "search_kwargs": {"k": 8}}
-
-
-def test_get_retriever_wraps_cross_encoder_when_rerank_enabled(monkeypatch):
-    captured = {}
-
-    class FakeVectorstore:
-        def as_retriever(self, **kwargs):
-            captured["base"] = kwargs
-            return "base-retriever"
+    def fake_bm25(db_directory, k):
+        captured["bm25"] = {"db_directory": db_directory, "k": k}
+        if bm25 == "missing":
+            raise FileNotFoundError("no index")
+        return "bm25-retriever"
 
     def fake_compressor_cls(**kwargs):
         captured["compressor"] = kwargs
@@ -100,62 +114,116 @@ def test_get_retriever_wraps_cross_encoder_when_rerank_enabled(monkeypatch):
         captured["compression"] = kwargs
         return "compressed-retriever"
 
+    monkeypatch.setattr(pipeline, "EnsembleRetriever", FakeEnsemble)
+    monkeypatch.setattr(pipeline, "get_bm25_retriever", fake_bm25)
     monkeypatch.setattr(pipeline, "ScoreAnnotatingReranker", fake_compressor_cls)
     monkeypatch.setattr(
         pipeline, "ContextualCompressionRetriever", fake_compression_retriever
     )
     monkeypatch.setattr(pipeline, "get_cross_encoder", lambda model: f"encoder:{model}")
+    return FakeVectorstore()
+
+
+def test_get_retriever_splits_budget_between_arms(monkeypatch):
+    captured = {}
+    vectorstore = _retriever_probe(monkeypatch, captured)
 
     result = pipeline.get_retriever(
-        FakeVectorstore(),
-        retrieve_k=5,
-        rerank_enabled=True,
+        vectorstore,
+        retrieve_k=10,
         rerank_model="reranker-model",
-        hybrid_search=False,
-    )
-
-    assert result == "compressed-retriever"
-    assert captured["base"] == {"search_type": "similarity", "search_kwargs": {"k": 5}}
-    assert captured["compressor"] == {
-        "model": "encoder:reranker-model",
-        "top_n": 5,
-    }
-    assert captured["compression"] == {
-        "base_compressor": "compressor",
-        "base_retriever": "base-retriever",
-    }
-
-
-def test_get_retriever_wraps_hybrid_with_ensemble(monkeypatch):
-    captured = {}
-
-    class FakeVectorstore:
-        def as_retriever(self, **kwargs):
-            captured["base"] = kwargs
-            return "base-retriever"
-
-    class FakeEnsemble:
-        def __init__(self, **kwargs):
-            captured["ensemble"] = kwargs
-
-    monkeypatch.setattr(pipeline, "EnsembleRetriever", FakeEnsemble)
-    monkeypatch.setattr(
-        pipeline, "get_bm25_retriever", lambda *a, **k: "bm25-retriever"
-    )
-
-    pipeline.get_retriever(
-        FakeVectorstore(),
-        retrieve_k=5,
-        rerank_model="reranker-model",
-        persist_directory="./persist",
-        hybrid_search=True,
+        rerank_k=3,
+        db_directory="./persist",
         hybrid_alpha=0.7,
     )
 
-    assert captured["base"] == {"search_type": "similarity", "search_kwargs": {"k": 5}}
-    assert captured["ensemble"]["retrievers"] == ["base-retriever", "bm25-retriever"]
-    assert captured["ensemble"]["weights"][0] == pytest.approx(0.7)
-    assert captured["ensemble"]["weights"][1] == pytest.approx(0.3)
+    assert result == "compressed-retriever"
+    # alpha 0.7 of a 10-chunk budget: 7 dense, 3 lexical.
+    assert captured["dense"] == {
+        "search_type": "similarity",
+        "search_kwargs": {"k": 7},
+    }
+    assert captured["bm25"] == {"db_directory": "./persist", "k": 3}
+    assert captured["ensemble"]["retrievers"] == ["dense-retriever", "bm25-retriever"]
+    # Fusion weights stay uniform: alpha already spent its influence on the split.
+    assert captured["ensemble"]["weights"] == [0.5, 0.5]
+
+
+def test_get_retriever_always_wraps_the_cross_encoder(monkeypatch):
+    captured = {}
+    vectorstore = _retriever_probe(monkeypatch, captured)
+
+    pipeline.get_retriever(
+        vectorstore,
+        retrieve_k=8,
+        rerank_model="reranker-model",
+        rerank_k=3,
+        db_directory="./persist",
+    )
+
+    assert captured["compressor"] == {
+        "model": "encoder:reranker-model",
+        "top_n": 3,  # the cross-encoder keeps rerank_k, not the whole budget
+    }
+    assert captured["compression"]["base_compressor"] == "compressor"
+
+
+def test_get_retriever_skips_bm25_when_alpha_is_one(monkeypatch):
+    captured = {}
+    vectorstore = _retriever_probe(monkeypatch, captured)
+
+    pipeline.get_retriever(
+        vectorstore,
+        retrieve_k=6,
+        rerank_model="reranker-model",
+        rerank_k=3,
+        db_directory="./persist",
+        hybrid_alpha=1.0,
+    )
+
+    assert captured["dense"]["search_kwargs"] == {"k": 6}
+    assert "bm25" not in captured
+    assert "ensemble" not in captured
+    assert captured["compression"]["base_retriever"] == "dense-retriever"
+
+
+def test_get_retriever_skips_vector_store_when_alpha_is_zero(monkeypatch):
+    captured = {}
+    vectorstore = _retriever_probe(monkeypatch, captured)
+
+    pipeline.get_retriever(
+        vectorstore,
+        retrieve_k=6,
+        rerank_model="reranker-model",
+        rerank_k=3,
+        db_directory="./persist",
+        hybrid_alpha=0.0,
+    )
+
+    assert captured["bm25"] == {"db_directory": "./persist", "k": 6}
+    assert "dense" not in captured
+    assert "ensemble" not in captured
+    assert captured["compression"]["base_retriever"] == "bm25-retriever"
+
+
+def test_get_retriever_falls_back_to_dense_when_bm25_index_missing(monkeypatch):
+    captured = {}
+    vectorstore = _retriever_probe(monkeypatch, captured, bm25="missing")
+
+    result = pipeline.get_retriever(
+        vectorstore,
+        retrieve_k=6,
+        rerank_model="reranker-model",
+        rerank_k=3,
+        db_directory="./persist",
+        hybrid_alpha=0.5,
+    )
+
+    assert result == "compressed-retriever"
+    # The whole budget falls back to the dense arm, not just its former share.
+    assert captured["dense"]["search_kwargs"] == {"k": 6}
+    assert "ensemble" not in captured
+    assert captured["compression"]["base_retriever"] == "dense-retriever"
 
 
 def test_format_docs_joins_page_content():
@@ -255,8 +323,10 @@ def test_build_rag_chain_threads_history(monkeypatch):
         llm_provider="ollama",
         system_prompt="sys",
         retrieve_k=5,
-        temperature=0.0,
+        llm_temperature=0.0,
         rerank_model="test-reranker",
+        rerank_k=3,
+        rerank_threshold=0.0,
         chat_history=history,
     )
 
@@ -297,8 +367,10 @@ def test_build_rag_chain_without_history_skips_condense(monkeypatch):
         llm_provider="ollama",
         system_prompt="sys",
         retrieve_k=5,
-        temperature=0.0,
+        llm_temperature=0.0,
         rerank_model="test-reranker",
+        rerank_k=3,
+        rerank_threshold=0.0,
     )
 
     out = chain.invoke({"question": "plain", "chat_history": []})
@@ -332,8 +404,9 @@ def test_build_rag_chain_applies_score_threshold(monkeypatch):
         llm_provider="ollama",
         system_prompt="sys",
         retrieve_k=5,
-        temperature=0.0,
+        llm_temperature=0.0,
         rerank_model="test-reranker",
+        rerank_k=3,
         rerank_threshold=0.3,
     )
 

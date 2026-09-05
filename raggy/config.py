@@ -19,24 +19,22 @@ class RaggySettings(BaseModel):
     accepted, but ranges and enum membership are enforced.
     """
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="forbid")
 
     sources: list[str]
-    persist_directory: str
+    db_directory: str
     chunk_size: int
     chunk_overlap: int
-    batch_size: int
+    embed_batch_size: int
     embedding_model: str
-    llm_provider: Literal["ollama", "openai", "anthropic", "google"] = "ollama"
+    llm_provider: Literal["ollama", "openai", "anthropic", "google"]
     llm_model: str
-    temperature: float
+    llm_temperature: float
     retrieve_k: int
-    hybrid_search: bool = True
-    hybrid_alpha: float = 0.5
-    rerank_enabled: bool = True
+    hybrid_alpha: float
     rerank_model: str
-    rerank_k: int | None = None
-    rerank_threshold: float = 0.3
+    rerank_k: int
+    rerank_threshold: float
     system_prompt: str
 
     @field_validator("sources", mode="before")
@@ -53,7 +51,7 @@ class RaggySettings(BaseModel):
             raise ValueError("'sources' must contain at least one file or directory")
         return value
 
-    @field_validator("chunk_size", "batch_size", "retrieve_k")
+    @field_validator("chunk_size", "embed_batch_size", "retrieve_k", "rerank_k")
     @classmethod
     def _positive_int(cls, value: int) -> int:
         if value <= 0:
@@ -67,9 +65,9 @@ class RaggySettings(BaseModel):
             raise ValueError("must be a non-negative integer")
         return value
 
-    @field_validator("temperature")
+    @field_validator("llm_temperature")
     @classmethod
-    def _temperature_range(cls, value: float) -> float:
+    def _llm_temperature_range(cls, value: float) -> float:
         if not 0.0 <= value <= 2.0:
             raise ValueError("must be between 0.0 and 2.0")
         return value
@@ -81,13 +79,6 @@ class RaggySettings(BaseModel):
             raise ValueError("must be between 0.0 and 1.0")
         return value
 
-    @field_validator("rerank_k")
-    @classmethod
-    def _positive_rerank_k(cls, value: int | None) -> int | None:
-        if value is not None and value <= 0:
-            raise ValueError("must be a positive integer")
-        return value
-
     @field_validator("rerank_threshold")
     @classmethod
     def _rerank_threshold_range(cls, value: float) -> float:
@@ -97,7 +88,7 @@ class RaggySettings(BaseModel):
 
     @model_validator(mode="after")
     def _cross_field_checks(self) -> "RaggySettings":
-        if self.rerank_k is not None and self.rerank_k > self.retrieve_k:
+        if self.rerank_k > self.retrieve_k:
             raise ValueError(
                 f"rerank_k ({self.rerank_k}) must not be greater than "
                 f"retrieve_k ({self.retrieve_k})"

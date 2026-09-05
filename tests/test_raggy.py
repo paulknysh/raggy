@@ -16,17 +16,19 @@ def test_load_config_reads_all_values(tmp_path):
     config_file.write_text(
         "sources:\n"
         "  - ./docs\n"
-        "persist_directory: ./my_db\n"
+        "db_directory: ./my_db\n"
         "chunk_size: 900\n"
         "chunk_overlap: 600\n"
-        "batch_size: 100\n"
+        "embed_batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_model: test-llm\n"
-        "temperature: 0.4\n"
+        "llm_temperature: 0.4\n"
         "retrieve_k: 11\n"
-        "rerank_enabled: true\n"
         "rerank_model: rerank-x\n"
         "rerank_k: 4\n"
+        "llm_provider: ollama\n"
+        "hybrid_alpha: 0.5\n"
+        "rerank_threshold: 0.3\n"
         "system_prompt: use this\n",
         encoding="utf-8",
     )
@@ -35,18 +37,16 @@ def test_load_config_reads_all_values(tmp_path):
 
     assert cfg == {
         "sources": ["./docs"],
-        "persist_directory": "./my_db",
+        "db_directory": "./my_db",
         "chunk_size": 900,
         "chunk_overlap": 600,
-        "batch_size": 100,
+        "embed_batch_size": 100,
         "embedding_model": "test-embed",
         "llm_provider": "ollama",
         "llm_model": "test-llm",
-        "temperature": 0.4,
+        "llm_temperature": 0.4,
         "retrieve_k": 11,
-        "hybrid_search": True,
         "hybrid_alpha": 0.5,
-        "rerank_enabled": True,
         "rerank_model": "rerank-x",
         "rerank_k": 4,
         "rerank_threshold": 0.3,
@@ -54,28 +54,29 @@ def test_load_config_reads_all_values(tmp_path):
     }
 
 
-def test_load_config_llm_provider_defaults_to_ollama(tmp_path):
+def test_load_config_requires_llm_provider(tmp_path):
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
         "sources:\n"
         "  - ./docs\n"
-        "persist_directory: ./my_db\n"
+        "db_directory: ./my_db\n"
         "chunk_size: 500\n"
         "chunk_overlap: 100\n"
-        "batch_size: 100\n"
+        "embed_batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_model: test-llm\n"
-        "temperature: 0.0\n"
+        "llm_temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "rerank_enabled: false\n"
         "rerank_model: rerank-x\n"
+        "rerank_k: 3\n"
+        "hybrid_alpha: 0.5\n"
+        "rerank_threshold: 0.3\n"
         "system_prompt: use this\n",
         encoding="utf-8",
     )
 
-    cfg = raggy.load_config(str(config_file))
-
-    assert cfg["llm_provider"] == "ollama"
+    with pytest.raises(ValueError, match="llm_provider"):
+        raggy.load_config(str(config_file))
 
 
 def test_load_config_reads_llm_provider(tmp_path):
@@ -83,17 +84,19 @@ def test_load_config_reads_llm_provider(tmp_path):
     config_file.write_text(
         "sources:\n"
         "  - ./docs\n"
-        "persist_directory: ./my_db\n"
+        "db_directory: ./my_db\n"
         "chunk_size: 500\n"
         "chunk_overlap: 100\n"
-        "batch_size: 100\n"
+        "embed_batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_provider: google\n"
         "llm_model: test-llm\n"
-        "temperature: 0.0\n"
+        "llm_temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "rerank_enabled: false\n"
         "rerank_model: rerank-x\n"
+        "rerank_k: 3\n"
+        "hybrid_alpha: 0.5\n"
+        "rerank_threshold: 0.3\n"
         "system_prompt: use this\n",
         encoding="utf-8",
     )
@@ -103,46 +106,23 @@ def test_load_config_reads_llm_provider(tmp_path):
     assert cfg["llm_provider"] == "google"
 
 
-def test_load_config_rerank_k_defaults_to_retrieve_k(tmp_path):
+def test_load_config_requires_rerank_k(tmp_path):
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
         "sources:\n"
         "  - ./docs\n"
-        "persist_directory: ./my_db\n"
+        "db_directory: ./my_db\n"
         "chunk_size: 500\n"
         "chunk_overlap: 100\n"
-        "batch_size: 100\n"
+        "embed_batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_model: test-llm\n"
-        "temperature: 0.0\n"
+        "llm_temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "rerank_enabled: false\n"
         "rerank_model: rerank-x\n"
-        "system_prompt: use this\n",
-        encoding="utf-8",
-    )
-
-    cfg = raggy.load_config(str(config_file))
-
-    assert cfg["rerank_k"] == 5
-
-
-def test_load_config_rejects_rerank_k_greater_than_k(tmp_path):
-    config_file = tmp_path / "config.yaml"
-    config_file.write_text(
-        "sources:\n"
-        "  - ./docs\n"
-        "persist_directory: ./my_db\n"
-        "chunk_size: 500\n"
-        "chunk_overlap: 100\n"
-        "batch_size: 100\n"
-        "embedding_model: test-embed\n"
-        "llm_model: test-llm\n"
-        "temperature: 0.0\n"
-        "retrieve_k: 5\n"
-        "rerank_enabled: true\n"
-        "rerank_model: rerank-x\n"
-        "rerank_k: 6\n"
+        "llm_provider: ollama\n"
+        "hybrid_alpha: 0.5\n"
+        "rerank_threshold: 0.3\n"
         "system_prompt: use this\n",
         encoding="utf-8",
     )
@@ -151,28 +131,55 @@ def test_load_config_rejects_rerank_k_greater_than_k(tmp_path):
         raggy.load_config(str(config_file))
 
 
-def test_load_config_hybrid_search_defaults_true_and_alpha_half(tmp_path):
+def test_load_config_rejects_rerank_k_greater_than_k(tmp_path):
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
-        "sources: ./docs\n"
-        "persist_directory: ./my_db\n"
+        "sources:\n"
+        "  - ./docs\n"
+        "db_directory: ./my_db\n"
         "chunk_size: 500\n"
         "chunk_overlap: 100\n"
-        "batch_size: 100\n"
+        "embed_batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_model: test-llm\n"
-        "temperature: 0.0\n"
+        "llm_temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "rerank_enabled: false\n"
         "rerank_model: rerank-x\n"
+        "rerank_k: 6\n"
+        "llm_provider: ollama\n"
+        "hybrid_alpha: 0.5\n"
+        "rerank_threshold: 0.3\n"
         "system_prompt: use this\n",
         encoding="utf-8",
     )
 
-    cfg = raggy.load_config(str(config_file))
+    with pytest.raises(ValueError, match="rerank_k"):
+        raggy.load_config(str(config_file))
 
-    assert cfg["hybrid_search"] is True
-    assert cfg["hybrid_alpha"] == 0.5
+
+def test_load_config_requires_hybrid_alpha(tmp_path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "sources:\n"
+        "  - ./docs\n"
+        "db_directory: ./my_db\n"
+        "chunk_size: 500\n"
+        "chunk_overlap: 100\n"
+        "embed_batch_size: 100\n"
+        "embedding_model: test-embed\n"
+        "llm_model: test-llm\n"
+        "llm_temperature: 0.0\n"
+        "retrieve_k: 5\n"
+        "rerank_model: rerank-x\n"
+        "rerank_k: 3\n"
+        "llm_provider: ollama\n"
+        "rerank_threshold: 0.3\n"
+        "system_prompt: use this\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="hybrid_alpha"):
+        raggy.load_config(str(config_file))
 
 
 def test_load_config_rejects_hybrid_alpha_out_of_range(tmp_path):
@@ -180,17 +187,19 @@ def test_load_config_rejects_hybrid_alpha_out_of_range(tmp_path):
         config_file = tmp_path / "config.yaml"
         config_file.write_text(
             "sources: ./docs\n"
-            "persist_directory: ./my_db\n"
+            "db_directory: ./my_db\n"
             "chunk_size: 500\n"
             "chunk_overlap: 100\n"
-            "batch_size: 100\n"
+            "embed_batch_size: 100\n"
             "embedding_model: test-embed\n"
             "llm_model: test-llm\n"
-            "temperature: 0.0\n"
+            "llm_temperature: 0.0\n"
             "retrieve_k: 5\n"
             f"hybrid_alpha: {bad}\n"
-            "rerank_enabled: false\n"
             "rerank_model: rerank-x\n"
+            "rerank_k: 3\n"
+            "llm_provider: ollama\n"
+            "rerank_threshold: 0.3\n"
             "system_prompt: use this\n",
             encoding="utf-8",
         )
@@ -202,18 +211,19 @@ def test_load_config_reads_rerank_threshold(tmp_path):
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
         "sources: ./docs\n"
-        "persist_directory: ./my_db\n"
+        "db_directory: ./my_db\n"
         "chunk_size: 500\n"
         "chunk_overlap: 100\n"
-        "batch_size: 100\n"
+        "embed_batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_model: test-llm\n"
-        "temperature: 0.0\n"
+        "llm_temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "rerank_enabled: true\n"
         "rerank_model: rerank-x\n"
         "rerank_k: 5\n"
         "rerank_threshold: 0.3\n"
+        "llm_provider: ollama\n"
+        "hybrid_alpha: 0.5\n"
         "system_prompt: use this\n",
         encoding="utf-8",
     )
@@ -228,18 +238,19 @@ def test_load_config_rejects_rerank_threshold_out_of_range(tmp_path):
         config_file = tmp_path / "config.yaml"
         config_file.write_text(
             "sources: ./docs\n"
-            "persist_directory: ./my_db\n"
+            "db_directory: ./my_db\n"
             "chunk_size: 500\n"
             "chunk_overlap: 100\n"
-            "batch_size: 100\n"
+            "embed_batch_size: 100\n"
             "embedding_model: test-embed\n"
             "llm_model: test-llm\n"
-            "temperature: 0.0\n"
+            "llm_temperature: 0.0\n"
             "retrieve_k: 5\n"
-            "rerank_enabled: true\n"
             "rerank_model: rerank-x\n"
             "rerank_k: 5\n"
             f"rerank_threshold: {bad}\n"
+            "llm_provider: ollama\n"
+            "hybrid_alpha: 0.5\n"
             "system_prompt: use this\n",
             encoding="utf-8",
         )
@@ -251,16 +262,19 @@ def test_load_config_accepts_single_string_source(tmp_path):
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
         "sources: ./docs\n"
-        "persist_directory: ./my_db\n"
+        "db_directory: ./my_db\n"
         "chunk_size: 500\n"
         "chunk_overlap: 100\n"
-        "batch_size: 100\n"
+        "embed_batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_model: test-llm\n"
-        "temperature: 0.0\n"
+        "llm_temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "rerank_enabled: false\n"
         "rerank_model: rerank-x\n"
+        "rerank_k: 3\n"
+        "llm_provider: ollama\n"
+        "hybrid_alpha: 0.5\n"
+        "rerank_threshold: 0.3\n"
         "system_prompt: use this\n",
         encoding="utf-8",
     )
@@ -274,16 +288,19 @@ def test_load_config_rejects_empty_sources(tmp_path):
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
         "sources: []\n"
-        "persist_directory: ./my_db\n"
+        "db_directory: ./my_db\n"
         "chunk_size: 500\n"
         "chunk_overlap: 100\n"
-        "batch_size: 100\n"
+        "embed_batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_model: test-llm\n"
-        "temperature: 0.0\n"
+        "llm_temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "rerank_enabled: false\n"
         "rerank_model: rerank-x\n"
+        "rerank_k: 3\n"
+        "llm_provider: ollama\n"
+        "hybrid_alpha: 0.5\n"
+        "rerank_threshold: 0.3\n"
         "system_prompt: use this\n",
         encoding="utf-8",
     )
@@ -292,20 +309,76 @@ def test_load_config_rejects_empty_sources(tmp_path):
         raggy.load_config(str(config_file))
 
 
+def test_load_config_requires_rerank_threshold(tmp_path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "sources:\n"
+        "  - ./docs\n"
+        "db_directory: ./my_db\n"
+        "chunk_size: 500\n"
+        "chunk_overlap: 100\n"
+        "embed_batch_size: 100\n"
+        "embedding_model: test-embed\n"
+        "llm_model: test-llm\n"
+        "llm_temperature: 0.0\n"
+        "retrieve_k: 5\n"
+        "rerank_model: rerank-x\n"
+        "rerank_k: 3\n"
+        "llm_provider: ollama\n"
+        "hybrid_alpha: 0.5\n"
+        "system_prompt: use this\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="rerank_threshold"):
+        raggy.load_config(str(config_file))
+
+
+def test_load_config_rejects_unknown_keys(tmp_path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "sources:\n"
+        "  - ./docs\n"
+        "db_directory: ./my_db\n"
+        "chunk_size: 500\n"
+        "chunk_overlap: 100\n"
+        "embed_batch_size: 100\n"
+        "embedding_model: test-embed\n"
+        "llm_model: test-llm\n"
+        "llm_temperature: 0.0\n"
+        "retrieve_k: 5\n"
+        "rerank_model: rerank-x\n"
+        "rerank_k: 3\n"
+        "llm_provider: ollama\n"
+        "hybrid_alpha: 0.5\n"
+        "rerank_threshold: 0.3\n"
+        "rerank_enabled: true\n"
+        "rerank_treshold: 0.8\n"
+        "system_prompt: use this\n",
+        encoding="utf-8",
+    )
+
+    # A stale key from a removed setting and a typo'd one must both be reported
+    # rather than silently ignored, which would apply a value the user never set.
+    with pytest.raises(ValueError, match="rerank_enabled"):
+        raggy.load_config(str(config_file))
+
+
 def test_load_config_rejects_unknown_llm_provider(tmp_path):
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
         "sources: ./docs\n"
-        "persist_directory: ./my_db\n"
+        "db_directory: ./my_db\n"
         "chunk_size: 500\n"
         "chunk_overlap: 100\n"
-        "batch_size: 100\n"
+        "embed_batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_provider: not-a-provider\n"
         "llm_model: test-llm\n"
-        "temperature: 0.0\n"
+        "llm_temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "rerank_enabled: false\n"
+        "hybrid_alpha: 0.5\n"
+        "rerank_threshold: 0.3\n"
         "system_prompt: use this\n",
         encoding="utf-8",
     )
@@ -318,15 +391,17 @@ def test_load_config_rejects_non_positive_chunk_size(tmp_path):
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
         "sources: ./docs\n"
-        "persist_directory: ./my_db\n"
+        "db_directory: ./my_db\n"
         "chunk_size: 0\n"
         "chunk_overlap: 100\n"
-        "batch_size: 100\n"
+        "embed_batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_model: test-llm\n"
-        "temperature: 0.0\n"
+        "llm_temperature: 0.0\n"
         "retrieve_k: 5\n"
-        "rerank_enabled: false\n"
+        "llm_provider: ollama\n"
+        "hybrid_alpha: 0.5\n"
+        "rerank_threshold: 0.3\n"
         "system_prompt: use this\n",
         encoding="utf-8",
     )
@@ -335,24 +410,26 @@ def test_load_config_rejects_non_positive_chunk_size(tmp_path):
         raggy.load_config(str(config_file))
 
 
-def test_load_config_rejects_negative_temperature(tmp_path):
+def test_load_config_rejects_negative_llm_temperature(tmp_path):
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
         "sources: ./docs\n"
-        "persist_directory: ./my_db\n"
+        "db_directory: ./my_db\n"
         "chunk_size: 500\n"
         "chunk_overlap: 100\n"
-        "batch_size: 100\n"
+        "embed_batch_size: 100\n"
         "embedding_model: test-embed\n"
         "llm_model: test-llm\n"
-        "temperature: -0.1\n"
+        "llm_temperature: -0.1\n"
         "retrieve_k: 5\n"
-        "rerank_enabled: false\n"
+        "llm_provider: ollama\n"
+        "hybrid_alpha: 0.5\n"
+        "rerank_threshold: 0.3\n"
         "system_prompt: use this\n",
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="temperature"):
+    with pytest.raises(ValueError, match="llm_temperature"):
         raggy.load_config(str(config_file))
 
 
@@ -360,16 +437,19 @@ def test_load_config_coerces_numeric_strings(tmp_path):
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
         "sources: ./docs\n"
-        "persist_directory: ./my_db\n"
+        "db_directory: ./my_db\n"
         "chunk_size: '500'\n"
         "chunk_overlap: '100'\n"
-        "batch_size: '100'\n"
+        "embed_batch_size: '100'\n"
         "embedding_model: test-embed\n"
         "llm_model: test-llm\n"
-        "temperature: '0.4'\n"
+        "llm_temperature: '0.4'\n"
         "retrieve_k: '5'\n"
-        "rerank_enabled: false\n"
         "rerank_model: rerank-x\n"
+        "rerank_k: '3'\n"
+        "llm_provider: ollama\n"
+        "hybrid_alpha: 0.5\n"
+        "rerank_threshold: 0.3\n"
         "system_prompt: use this\n",
         encoding="utf-8",
     )
@@ -377,17 +457,17 @@ def test_load_config_coerces_numeric_strings(tmp_path):
     cfg = raggy.load_config(str(config_file))
 
     assert cfg["chunk_size"] == 500
-    assert cfg["temperature"] == 0.4
+    assert cfg["llm_temperature"] == 0.4
     assert cfg["retrieve_k"] == 5
 
 
 def test_init_db_forwards_config_to_initialize_db(monkeypatch):
     fake_cfg = {
         "sources": ["./docs"],
-        "persist_directory": "./persist",
+        "db_directory": "./persist",
         "chunk_size": 100,
         "chunk_overlap": 10,
-        "batch_size": 100,
+        "embed_batch_size": 100,
         "embedding_model": "embed-x",
     }
     captured = {}
@@ -408,12 +488,12 @@ def test_init_db_forwards_config_to_initialize_db(monkeypatch):
 
     assert result is sentinel
     assert captured == {
-        "persist_directory": "./persist",
+        "db_directory": "./persist",
         "embedding_model": "embed-x",
         "sources": ["./docs"],
         "chunk_size": 100,
         "chunk_overlap": 10,
-        "batch_size": 100,
+        "embed_batch_size": 100,
         "progress": None,
     }
 
@@ -424,11 +504,9 @@ def test_run_pipeline_returns_response_and_retrieved_docs(monkeypatch):
         "llm_provider": "ollama",
         "system_prompt": "sys",
         "retrieve_k": 2,
-        "temperature": 0.0,
-        "persist_directory": "./persist",
-        "hybrid_search": True,
+        "llm_temperature": 0.0,
+        "db_directory": "./persist",
         "hybrid_alpha": 0.5,
-        "rerank_enabled": False,
         "rerank_model": "rerank-x",
         "rerank_k": 2,
         "rerank_threshold": 0.0,
@@ -473,11 +551,9 @@ def test_run_pipeline_forwards_chat_history(monkeypatch):
         "llm_provider": "ollama",
         "system_prompt": "sys",
         "retrieve_k": 2,
-        "temperature": 0.0,
-        "persist_directory": "./persist",
-        "hybrid_search": True,
+        "llm_temperature": 0.0,
+        "db_directory": "./persist",
         "hybrid_alpha": 0.5,
-        "rerank_enabled": False,
         "rerank_model": "rerank-x",
         "rerank_k": 2,
         "rerank_threshold": 0.0,
@@ -510,7 +586,7 @@ def test_run_pipeline_forwards_chat_history(monkeypatch):
 def test_refresh_db_rebuilds_when_stale(monkeypatch):
     fake_cfg = {
         "sources": ["./docs"],
-        "persist_directory": "./persist",
+        "db_directory": "./persist",
         "chunk_size": 100,
         "chunk_overlap": 10,
         "embedding_model": "embed-x",
@@ -544,7 +620,7 @@ def test_refresh_db_rebuilds_when_stale(monkeypatch):
 def test_refresh_db_skips_rebuild_when_fresh(monkeypatch):
     fake_cfg = {
         "sources": ["./docs"],
-        "persist_directory": "./persist",
+        "db_directory": "./persist",
         "chunk_size": 100,
         "chunk_overlap": 10,
         "embedding_model": "embed-x",
@@ -578,11 +654,9 @@ def test_run_pipeline_stream_yields_chunks_and_captures_docs(monkeypatch):
         "llm_provider": "ollama",
         "system_prompt": "sys",
         "retrieve_k": 2,
-        "temperature": 0.0,
-        "persist_directory": "./persist",
-        "hybrid_search": True,
+        "llm_temperature": 0.0,
+        "db_directory": "./persist",
         "hybrid_alpha": 0.5,
-        "rerank_enabled": False,
         "rerank_model": "rerank-x",
         "rerank_k": 2,
         "rerank_threshold": 0.0,
@@ -618,11 +692,9 @@ def test_run_pipeline_stream_forwards_chat_history(monkeypatch):
         "llm_provider": "ollama",
         "system_prompt": "sys",
         "retrieve_k": 2,
-        "temperature": 0.0,
-        "persist_directory": "./persist",
-        "hybrid_search": True,
+        "llm_temperature": 0.0,
+        "db_directory": "./persist",
         "hybrid_alpha": 0.5,
-        "rerank_enabled": False,
         "rerank_model": "rerank-x",
         "rerank_k": 2,
         "rerank_threshold": 0.0,
@@ -658,11 +730,9 @@ def test_run_pipeline_propagates_unexpected_error(monkeypatch):
         "llm_provider": "ollama",
         "system_prompt": "sys",
         "retrieve_k": 2,
-        "temperature": 0.0,
-        "persist_directory": "./persist",
-        "hybrid_search": True,
+        "llm_temperature": 0.0,
+        "db_directory": "./persist",
         "hybrid_alpha": 0.5,
-        "rerank_enabled": False,
         "rerank_model": "rerank-x",
         "rerank_k": 2,
         "rerank_threshold": 0.0,
@@ -700,7 +770,6 @@ def test_ensure_models_pulls_embedding_and_local_llm(monkeypatch):
             "embedding_model": "embed-x",
             "llm_provider": "ollama",
             "llm_model": "llm-x",
-            "rerank_enabled": False,
             "rerank_model": "rerank-x",
         },
         progress=sentinel,
@@ -726,7 +795,6 @@ def test_ensure_models_skips_llm_for_remote_providers(monkeypatch):
             "embedding_model": "embed-x",
             "llm_provider": "openai",
             "llm_model": "gpt-4o",
-            "rerank_enabled": False,
             "rerank_model": "rerank-x",
         }
     )
@@ -734,7 +802,7 @@ def test_ensure_models_skips_llm_for_remote_providers(monkeypatch):
     assert pulled == ["embed-x"]
 
 
-def test_ensure_models_downloads_reranker_when_enabled(monkeypatch):
+def test_ensure_models_always_downloads_the_reranker(monkeypatch):
     downloaded = []
     monkeypatch.setattr(raggy, "ensure_ollama_model", lambda model, progress=None: None)
     monkeypatch.setattr(
@@ -749,7 +817,6 @@ def test_ensure_models_downloads_reranker_when_enabled(monkeypatch):
             "embedding_model": "embed-x",
             "llm_provider": "openai",
             "llm_model": "gpt-4o",
-            "rerank_enabled": True,
             "rerank_model": "rerank-x",
         },
         progress=sentinel,
@@ -758,32 +825,10 @@ def test_ensure_models_downloads_reranker_when_enabled(monkeypatch):
     assert downloaded == [("rerank-x", sentinel)]
 
 
-def test_ensure_models_skips_reranker_when_disabled(monkeypatch):
-    downloaded = []
-    monkeypatch.setattr(raggy, "ensure_ollama_model", lambda model, progress=None: None)
-    monkeypatch.setattr(
-        raggy,
-        "ensure_reranker_model",
-        lambda model, progress=None: downloaded.append(model),
-    )
-
-    raggy.ensure_models(
-        {
-            "embedding_model": "embed-x",
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o",
-            "rerank_enabled": False,
-            "rerank_model": "rerank-x",
-        }
-    )
-
-    assert downloaded == []
-
-
 def test_refresh_db_announces_staleness_before_reindexing(monkeypatch):
     fake_cfg = {
         "sources": ["./docs"],
-        "persist_directory": "./persist",
+        "db_directory": "./persist",
         "chunk_size": 100,
         "chunk_overlap": 10,
         "embedding_model": "embed-x",
@@ -808,7 +853,7 @@ def test_refresh_db_announces_staleness_before_reindexing(monkeypatch):
 def test_refresh_db_stays_quiet_when_db_is_current(monkeypatch):
     fake_cfg = {
         "sources": ["./docs"],
-        "persist_directory": "./persist",
+        "db_directory": "./persist",
         "chunk_size": 100,
         "chunk_overlap": 10,
         "embedding_model": "embed-x",
@@ -830,11 +875,9 @@ def test_run_pipeline_stream_runs_against_the_given_config(monkeypatch):
         "llm_provider": "openai",
         "system_prompt": "sys",
         "retrieve_k": 2,
-        "temperature": 0.0,
-        "persist_directory": "./persist",
-        "hybrid_search": True,
+        "llm_temperature": 0.0,
+        "db_directory": "./persist",
         "hybrid_alpha": 0.5,
-        "rerank_enabled": False,
         "rerank_model": "rerank-x",
         "rerank_k": 2,
         "rerank_threshold": 0.0,
@@ -868,7 +911,7 @@ def test_refresh_db_reindexes_from_the_given_config(monkeypatch):
     """The rebuild re-reads the caller's config, not the working-directory one."""
     fake_cfg = {
         "sources": ["./docs"],
-        "persist_directory": "./persist",
+        "db_directory": "./persist",
         "chunk_size": 100,
         "chunk_overlap": 10,
         "embedding_model": "embed-x",
@@ -893,12 +936,12 @@ def test_refresh_db_reindexes_from_the_given_config(monkeypatch):
 
 def test_init_db_reads_the_given_config(monkeypatch):
     fake_cfg = {
-        "persist_directory": "./persist",
+        "db_directory": "./persist",
         "embedding_model": "embed-x",
         "sources": ["./docs"],
         "chunk_size": 100,
         "chunk_overlap": 10,
-        "batch_size": 50,
+        "embed_batch_size": 50,
     }
     seen = {}
 

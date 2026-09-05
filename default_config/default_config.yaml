@@ -4,29 +4,24 @@ sources:
   # - /Users/xyz/Downloads/my_docs1 # additional folder
   # - /Users/xyz/Desktop/my_docs2/abc.pdf # additional file
 
-persist_directory: ./db # /Users/xyz/db
+db_directory: ./db # /Users/xyz/db
 
 embedding_model: "nomic-embed-text"
 chunk_size: 500
 chunk_overlap: 100
-batch_size: 100
+embed_batch_size: 100
 
 # LLM Configuration
 llm_provider: "ollama" # "ollama" | "openai" | "anthropic" | "google"
 llm_model: "phi4-mini"
-temperature: 0.0
+llm_temperature: 0.0
 
 # RAG Pipeline Configuration
-retrieve_k: 25
-# hybrid retrieval (dense + BM25 lexical, fused via reciprocal rank fusion)
-hybrid_search: true
-hybrid_alpha: 0.5 # weight of the dense/vector pass (1.0 = vector only, 0.0 = BM25 only)
-# optional cross-encoder re-ranking
-rerank_enabled: true
+retrieve_k: 50 # total chunks retrieved per query, split across the vector and BM25 retrievers
+hybrid_alpha: 0.5 # 1.0 = vector only, 0.0 = BM25 only
 rerank_model: "cross-encoder/ms-marco-MiniLM-L6-v2"
-rerank_k: 5
-# drop reranked chunks scoring below this relevance (0.0 = disabled)
-rerank_threshold: 0.3
+rerank_k: 5 # number of chunks after reranking
+rerank_threshold: 0.3 # drop reranked chunks scoring below this relevance (0.0 = disabled)
 
 system_prompt: |
   You are a RAG (Retrieval-Augmented Generation) assistant answering a user's

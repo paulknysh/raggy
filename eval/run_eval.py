@@ -239,7 +239,7 @@ def main() -> None:
 
     embeddings = OllamaEmbeddings(model=_cfg["embedding_model"])
     judge_llm = get_llm(
-        _cfg["llm_provider"], _cfg["llm_model"], temperature=_cfg["temperature"]
+        _cfg["llm_provider"], _cfg["llm_model"], temperature=_cfg["llm_temperature"]
     )
 
     rows: list[dict[str, Any]] = []

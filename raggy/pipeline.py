@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Sequence
 
 from langchain_chroma import Chroma
@@ -15,6 +16,8 @@ from pydantic import ConfigDict
 from .bm25 import get_bm25_retriever
 from .llm_factory import get_llm
 from .reranker import get_cross_encoder
+
+logger = logging.getLogger(__name__)
 
 _ROLE_LABELS = {"human": "User", "ai": "Assistant", "system": "System"}
 
@@ -100,60 +103,96 @@ def filter_by_score_threshold(
 ) -> list[Document]:
     """Keep only chunks whose reranker score is at or above ``threshold``.
 
-    Documents without a stored score (e.g. reranking was disabled) are kept,
-    so this is fail-open. A ``threshold`` of ``None`` or ``<= 0`` disables the
-    filter entirely and returns ``docs`` unchanged. Order is preserved.
+    Documents without a stored score are kept, so this is fail-open. A
+    ``threshold`` of ``None`` or ``<= 0`` disables the filter entirely and
+    returns ``docs`` unchanged. Order is preserved.
     """
     if not threshold or threshold <= 0:
         return docs
     return [d for d in docs if d.metadata.get(SCORE_KEY, float("inf")) >= threshold]
 
 
+def split_retrieval_budget(retrieve_k: int, hybrid_alpha: float) -> tuple[int, int]:
+    """Split a candidate budget of ``retrieve_k`` between the two retrieval arms.
+
+    ``hybrid_alpha`` is the dense arm's *share of the budget*, not a ranking
+    weight: ``1.0`` spends the whole budget on the vector store, ``0.0`` on
+    BM25, ``0.5`` splits it evenly. The two halves always sum to exactly
+    ``retrieve_k``, so that number is a genuine ceiling on how many chunks
+    reach the cross-encoder (the arms may overlap, and duplicates are then
+    collapsed, so the real count can be lower).
+
+    An alpha near enough to an extreme rounds the other arm down to zero,
+    which switches that pass off exactly as ``0.0`` or ``1.0`` would.
+    """
+    k_dense = round(hybrid_alpha * retrieve_k)
+    k_sparse = retrieve_k - k_dense
+    return k_dense, k_sparse
+
+
 def get_retriever(
     vectorstore: Chroma,
     retrieve_k: int,
     rerank_model: str,
-    rerank_enabled: bool = False,
-    rerank_k: int | None = None,
-    persist_directory: str | None = None,
-    hybrid_search: bool = True,
+    rerank_k: int,
+    db_directory: str | None = None,
     hybrid_alpha: float = 0.5,
 ):
     """Configures and returns the retriever.
 
-    The pipeline is two-stage:
+    The pipeline is two-stage, and both stages always run:
 
-      1. First stage (always): similarity retrieval over the whole corpus,
-         returning ``retrieve_k`` chunks. When ``hybrid_search`` is set,
-         the vector retriever is fused with a lexical ``bm25s`` retriever
-         (loaded from the persisted index) via reciprocal rank fusion,
-         weighting the dense pass by ``hybrid_alpha``.
-       2. Second stage (optional): a cross-encoder scores each
-         (query, chunk) pair and keeps the top ``rerank_k`` chunks.
-         ``rerank_k`` defaults to ``retrieve_k`` and must not exceed it.
+      1. Hybrid retrieval over the whole corpus. ``retrieve_k`` is the total
+         candidate budget, split between a dense pass over the vector store
+         and a lexical ``bm25s`` pass by ``hybrid_alpha`` (see
+         :func:`split_retrieval_budget`). The two result lists are merged by
+         reciprocal rank fusion. Fusion weights are deliberately uniform:
+         ``hybrid_alpha`` already decides each arm's influence by deciding how
+         many candidates it contributes, and weighting the fusion on top of
+         that would count the same preference twice.
+      2. A cross-encoder scores each (query, chunk) pair and keeps the top
+         ``rerank_k`` chunks. ``rerank_k`` must not exceed ``retrieve_k``.
+
+    Because stage 2 rescores every candidate from scratch, stage 1's *ordering*
+    is discarded; only which chunks it selects can affect the answer. That is
+    why ``hybrid_alpha`` divides the budget rather than weighting the fusion.
     """
-    search_kwargs: dict = {"k": retrieve_k}
-    retriever = vectorstore.as_retriever(
-        search_type="similarity", search_kwargs=search_kwargs
+    k_dense, k_sparse = split_retrieval_budget(retrieve_k, hybrid_alpha)
+
+    def dense_retriever(k: int):
+        return vectorstore.as_retriever(
+            search_type="similarity", search_kwargs={"k": k}
+        )
+
+    retrievers: list = []
+    if k_dense:
+        retrievers.append(dense_retriever(k_dense))
+    if k_sparse:
+        try:
+            retrievers.append(get_bm25_retriever(db_directory, k=k_sparse))
+        except FileNotFoundError:
+            # A DB built before the BM25 index existed. Degrade to a dense-only
+            # pass spending the whole budget rather than failing the query; the
+            # index reappears on the next rebuild.
+            logger.warning(
+                "BM25 index not found in '%s'; falling back to vector-only "
+                "retrieval. Rebuild the DB to restore hybrid search.",
+                db_directory,
+            )
+            retrievers = [dense_retriever(retrieve_k)]
+
+    retriever = (
+        retrievers[0]
+        if len(retrievers) == 1
+        else EnsembleRetriever(retrievers=retrievers, weights=[0.5, 0.5])
     )
 
-    if hybrid_search:
-        bm25_retriever = get_bm25_retriever(persist_directory, k=retrieve_k)
-        retriever = EnsembleRetriever(
-            retrievers=[retriever, bm25_retriever],
-            weights=[hybrid_alpha, 1.0 - hybrid_alpha],
-        )
-
-    if rerank_enabled:
-        final_k = rerank_k if rerank_k is not None else retrieve_k
-        compressor = ScoreAnnotatingReranker(
-            model=get_cross_encoder(rerank_model), top_n=final_k
-        )
-        retriever = ContextualCompressionRetriever(
-            base_compressor=compressor, base_retriever=retriever
-        )
-
-    return retriever
+    compressor = ScoreAnnotatingReranker(
+        model=get_cross_encoder(rerank_model), top_n=rerank_k
+    )
+    return ContextualCompressionRetriever(
+        base_compressor=compressor, base_retriever=retriever
+    )
 
 
 def format_docs(retrieved_docs: list[Document]) -> str:
@@ -183,13 +222,11 @@ def build_rag_chain(
     llm_provider: str,
     system_prompt: str,
     retrieve_k: int,
-    temperature: float,
+    llm_temperature: float,
     rerank_model: str,
-    rerank_enabled: bool = False,
-    rerank_k: int | None = None,
-    rerank_threshold: float = 0.0,
-    persist_directory: str | None = None,
-    hybrid_search: bool = True,
+    rerank_k: int,
+    rerank_threshold: float,
+    db_directory: str | None = None,
     hybrid_alpha: float = 0.5,
     doc_sink: list | None = None,
     chat_history: list | None = None,
@@ -200,9 +237,9 @@ def build_rag_chain(
 
     When ``rerank_threshold`` is above 0 the cross-encoder's relevance score
     (stamped on each chunk by :class:`ScoreAnnotatingReranker`) is used to drop
-    any reranked chunk scoring below the threshold before the prompt; it is off
-    by default. The
-    surviving Documents are captured in a single pass and appended to
+    any reranked chunk scoring below the threshold before the prompt; a value of
+    ``0.0`` disables the filter. The surviving Documents are captured in a
+    single pass and appended to
     ``doc_sink`` (if provided), so callers can inspect exactly what the LLM
     saw without running the retriever a second time.
 
@@ -215,14 +252,12 @@ def build_rag_chain(
     retriever = get_retriever(
         vectorstore,
         retrieve_k=retrieve_k,
-        rerank_enabled=rerank_enabled,
         rerank_model=rerank_model,
         rerank_k=rerank_k,
-        persist_directory=persist_directory,
-        hybrid_search=hybrid_search,
+        db_directory=db_directory,
         hybrid_alpha=hybrid_alpha,
     )
-    llm = get_llm(llm_provider, llm_model, temperature=temperature)
+    llm = get_llm(llm_provider, llm_model, temperature=llm_temperature)
     prompt = get_prompt_template(system_prompt, with_history=chat_history is not None)
 
     def format_and_capture(docs: list[Document]) -> str:

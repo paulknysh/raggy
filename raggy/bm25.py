@@ -2,7 +2,7 @@
 
 The dense vector store (Chroma) has no lexical understanding, so hybrid
 retrieval pairs it with a sparse BM25 pass. :func:`save_bm25_index` writes the
-index to ``<persist_directory>/bm25_index`` when the vector DB is built (see
+index to ``<db_directory>/bm25_index`` when the vector DB is built (see
 :mod:`raggy.indexing`); :func:`get_bm25_retriever` loads it back at
 retrieval time.
 """
@@ -19,15 +19,15 @@ BM25_INDEX_DIRNAME = "bm25_index"
 METADATA_FILENAME = "chunks_metadata.json"
 
 
-def save_bm25_index(splits: list[Document], persist_directory: str) -> None:
+def save_bm25_index(splits: list[Document], db_directory: str) -> None:
     """Build and persist a ``bm25s`` index (plus chunk metadata) to disk.
 
-    The index is written to ``<persist_directory>/bm25_index`` at DB build
+    The index is written to ``<db_directory>/bm25_index`` at DB build
     time so the retrieval step can load it later without re-indexing. Corpus
     entries are aligned by index with the per-chunk metadata so the
     ``Bm25sRetriever`` can reconstruct the original ``Document``s.
     """
-    index_dir = Path(persist_directory) / BM25_INDEX_DIRNAME
+    index_dir = Path(db_directory) / BM25_INDEX_DIRNAME
     if not splits:
         # An empty corpus can't be indexed; drop the old index rather than
         # leaving one that would keep returning removed chunks.
@@ -55,9 +55,14 @@ class Bm25sRetriever(BaseRetriever):
     k: int = 10
 
     def _get_relevant_documents(self, query: str) -> list[Document]:
+        # bm25s raises if k exceeds the corpus size, so a small corpus (or a
+        # large retrieval budget) would otherwise fail the query outright.
+        k = min(self.k, len(self.chunks_metadata))
+        if k <= 0:
+            return []
         tokenized = bm25s.tokenize([query], show_progress=False)
         hits, _ = self.bm25.retrieve(
-            tokenized, corpus=self.bm25.corpus, k=self.k, show_progress=False
+            tokenized, corpus=self.bm25.corpus, k=k, show_progress=False
         )
         docs: list[Document] = []
         for entry in hits[0]:
@@ -71,18 +76,18 @@ class Bm25sRetriever(BaseRetriever):
         return docs
 
 
-def get_bm25_retriever(persist_directory: str, k: int = 10) -> Bm25sRetriever:
-    """Load the persisted ``bm25s`` index from ``persist_directory``.
+def get_bm25_retriever(db_directory: str, k: int = 10) -> Bm25sRetriever:
+    """Load the persisted ``bm25s`` index from ``db_directory``.
 
     Raises ``FileNotFoundError`` if the index was never built (e.g. hybrid
     search enabled without ever running the DB build step).
     """
-    index_dir = Path(persist_directory) / BM25_INDEX_DIRNAME
+    index_dir = Path(db_directory) / BM25_INDEX_DIRNAME
     metadata_path = index_dir / METADATA_FILENAME
     if not metadata_path.exists():
         raise FileNotFoundError(
-            f"BM25 index not found in '{index_dir}'. Rebuild the DB with "
-            "hybrid_search enabled before using it."
+            f"BM25 index not found in '{index_dir}'. Rebuild the DB to "
+            "restore the lexical half of hybrid retrieval."
         )
 
     bm25 = bm25s.BM25()

@@ -24,12 +24,12 @@ def test_initialize_db_ingests_when_collection_empty(tmp_path, monkeypatch):
     monkeypatch.setattr(indexing, "create_index", fake_create_index)
 
     result = indexing.initialize_db(
-        persist_directory=str(tmp_path / "db"),
+        db_directory=str(tmp_path / "db"),
         embedding_model="embed-model",
         sources=[str(source_file)],
         chunk_size=500,
         chunk_overlap=50,
-        batch_size=100,
+        embed_batch_size=100,
     )
 
     assert isinstance(result, FakeVectorstore)
@@ -48,8 +48,8 @@ def test_initialize_db_skips_ingest_when_data_exists(monkeypatch, tmp_path):
     class FakeVectorstore:
         _collection = FakeCollection()
 
-    persist_directory = tmp_path / "db"
-    persist_directory.mkdir()
+    db_directory = tmp_path / "db"
+    db_directory.mkdir()
 
     index_cfg = indexing.build_index_config(
         sources=[str(source_file)],
@@ -57,7 +57,7 @@ def test_initialize_db_skips_ingest_when_data_exists(monkeypatch, tmp_path):
         chunk_overlap=50,
         embedding_model="embed-model",
     )
-    (persist_directory / "manifest.yaml").write_text(
+    (db_directory / "manifest.yaml").write_text(
         yaml.safe_dump(index_cfg), encoding="utf-8"
     )
 
@@ -69,12 +69,12 @@ def test_initialize_db_skips_ingest_when_data_exists(monkeypatch, tmp_path):
     )
 
     indexing.initialize_db(
-        persist_directory=str(persist_directory),
+        db_directory=str(db_directory),
         embedding_model="embed-model",
         sources=[str(source_file)],
         chunk_size=500,
         chunk_overlap=50,
-        batch_size=100,
+        embed_batch_size=100,
     )
 
     assert calls["ingest"] == 0
@@ -117,12 +117,12 @@ def test_initialize_db_rebuilds_when_manifest_differs(tmp_path, monkeypatch):
     )
 
     indexing.initialize_db(
-        persist_directory=str(tmp_path / "db"),
+        db_directory=str(tmp_path / "db"),
         embedding_model="embed-model",
         sources=[str(source_file)],
         chunk_size=500,
         chunk_overlap=50,
-        batch_size=100,
+        embed_batch_size=100,
     )
 
     assert calls["ingest"] == 1
@@ -139,7 +139,7 @@ def test_initialize_db_rebuilds_when_manifest_differs(tmp_path, monkeypatch):
     )
 
 
-def _write_manifest_for(persist_directory, source_file, **overrides):
+def _write_manifest_for(db_directory, source_file, **overrides):
     index_cfg = indexing.build_index_config(
         sources=[str(source_file)],
         chunk_size=500,
@@ -147,8 +147,8 @@ def _write_manifest_for(persist_directory, source_file, **overrides):
         embedding_model="embed-model",
     )
     index_cfg.update(overrides)
-    persist_directory.mkdir(parents=True, exist_ok=True)
-    (persist_directory / "manifest.yaml").write_text(
+    db_directory.mkdir(parents=True, exist_ok=True)
+    (db_directory / "manifest.yaml").write_text(
         yaml.safe_dump(index_cfg), encoding="utf-8"
     )
     return index_cfg
@@ -164,8 +164,8 @@ def test_plan_index_update_requires_full_rebuild_without_manifest(tmp_path):
 def test_plan_index_update_full_rebuild_on_chunking_change(tmp_path):
     source_file = tmp_path / "doc.txt"
     source_file.write_text("content", encoding="utf-8")
-    persist_directory = tmp_path / "db"
-    _write_manifest_for(persist_directory, source_file, chunk_size=999)
+    db_directory = tmp_path / "db"
+    _write_manifest_for(db_directory, source_file, chunk_size=999)
 
     index_cfg = indexing.build_index_config(
         sources=[str(source_file)],
@@ -173,7 +173,7 @@ def test_plan_index_update_full_rebuild_on_chunking_change(tmp_path):
         chunk_overlap=50,
         embedding_model="embed-model",
     )
-    plan = indexing.plan_index_update(str(persist_directory), index_cfg)
+    plan = indexing.plan_index_update(str(db_directory), index_cfg)
 
     assert plan.full_rebuild is True
 
@@ -181,9 +181,9 @@ def test_plan_index_update_full_rebuild_on_chunking_change(tmp_path):
 def test_plan_index_update_full_rebuild_for_legacy_manifest(tmp_path):
     source_file = tmp_path / "doc.txt"
     source_file.write_text("content", encoding="utf-8")
-    persist_directory = tmp_path / "db"
-    persist_directory.mkdir()
-    (persist_directory / "manifest.yaml").write_text(
+    db_directory = tmp_path / "db"
+    db_directory.mkdir()
+    (db_directory / "manifest.yaml").write_text(
         yaml.safe_dump(
             {
                 "sources": [str(source_file)],
@@ -202,7 +202,7 @@ def test_plan_index_update_full_rebuild_for_legacy_manifest(tmp_path):
         chunk_overlap=50,
         embedding_model="embed-model",
     )
-    plan = indexing.plan_index_update(str(persist_directory), index_cfg)
+    plan = indexing.plan_index_update(str(db_directory), index_cfg)
 
     assert plan.full_rebuild is True
 
@@ -216,15 +216,15 @@ def test_plan_index_update_detects_added_modified_and_removed(tmp_path):
     for path in (kept, changed, removed):
         path.write_text("original", encoding="utf-8")
 
-    persist_directory = tmp_path / "db"
-    persist_directory.mkdir()
+    db_directory = tmp_path / "db"
+    db_directory.mkdir()
     stored = indexing.build_index_config(
         sources=[str(docs_dir)],
         chunk_size=500,
         chunk_overlap=50,
         embedding_model="embed-model",
     )
-    (persist_directory / "manifest.yaml").write_text(
+    (db_directory / "manifest.yaml").write_text(
         yaml.safe_dump(stored), encoding="utf-8"
     )
 
@@ -239,7 +239,7 @@ def test_plan_index_update_detects_added_modified_and_removed(tmp_path):
         chunk_overlap=50,
         embedding_model="embed-model",
     )
-    plan = indexing.plan_index_update(str(persist_directory), index_cfg)
+    plan = indexing.plan_index_update(str(db_directory), index_cfg)
 
     assert plan.full_rebuild is False
     assert plan.added == [str(added)]
@@ -251,13 +251,13 @@ def test_plan_index_update_detects_added_modified_and_removed(tmp_path):
 def test_plan_index_update_reports_no_changes_when_sources_are_untouched(tmp_path):
     source_file = tmp_path / "doc.txt"
     source_file.write_text("content", encoding="utf-8")
-    persist_directory = tmp_path / "db"
-    index_cfg = _write_manifest_for(persist_directory, source_file)
+    db_directory = tmp_path / "db"
+    index_cfg = _write_manifest_for(db_directory, source_file)
 
-    plan = indexing.plan_index_update(str(persist_directory), index_cfg)
+    plan = indexing.plan_index_update(str(db_directory), index_cfg)
 
     assert plan.has_changes is False
-    assert indexing.db_needs_rebuild(str(persist_directory), index_cfg) is False
+    assert indexing.db_needs_rebuild(str(db_directory), index_cfg) is False
 
 
 def test_update_index_deletes_stale_chunks_and_embeds_changed_files(
@@ -292,12 +292,12 @@ def test_update_index_deletes_stale_chunks_and_embeds_changed_files(
     monkeypatch.setattr(
         indexing,
         "_embed_in_batches",
-        lambda splits, store, batch_size, progress=None: embedded.extend(splits),
+        lambda splits, store, embed_batch_size, progress=None: embedded.extend(splits),
     )
     monkeypatch.setattr(
         indexing,
         "save_bm25_index",
-        lambda splits, persist_directory: saved.append(splits),
+        lambda splits, db_directory: saved.append(splits),
     )
 
     plan = indexing.IndexPlan(added=["a.txt"], modified=["b.txt"], removed=["c.txt"])
@@ -306,8 +306,8 @@ def test_update_index_deletes_stale_chunks_and_embeds_changed_files(
         plan=plan,
         chunk_size=500,
         chunk_overlap=50,
-        batch_size=100,
-        persist_directory=str(tmp_path),
+        embed_batch_size=100,
+        db_directory=str(tmp_path),
     )
 
     assert deleted == [{"source": {"$in": ["c.txt", "b.txt"]}}]
@@ -326,15 +326,15 @@ def test_initialize_db_updates_incrementally_when_only_sources_change(
     doc = docs_dir / "doc.txt"
     doc.write_text("content", encoding="utf-8")
 
-    persist_directory = tmp_path / "db"
-    persist_directory.mkdir()
+    db_directory = tmp_path / "db"
+    db_directory.mkdir()
     stored = indexing.build_index_config(
         sources=[str(docs_dir)],
         chunk_size=500,
         chunk_overlap=50,
         embedding_model="embed-model",
     )
-    (persist_directory / "manifest.yaml").write_text(
+    (db_directory / "manifest.yaml").write_text(
         yaml.safe_dump(stored), encoding="utf-8"
     )
 
@@ -362,22 +362,22 @@ def test_initialize_db_updates_incrementally_when_only_sources_change(
     monkeypatch.setattr(indexing, "update_index", fake_update_index)
     wiped: list = []
     monkeypatch.setattr(
-        indexing, "_reset_persist_directory", lambda path: wiped.append(path)
+        indexing, "_reset_db_directory", lambda path: wiped.append(path)
     )
 
     indexing.initialize_db(
-        persist_directory=str(persist_directory),
+        db_directory=str(db_directory),
         embedding_model="embed-model",
         sources=[str(docs_dir)],
         chunk_size=500,
         chunk_overlap=50,
-        batch_size=100,
+        embed_batch_size=100,
     )
 
     assert calls == {"ingest": 0, "update": 1}
     assert wiped == []
     manifest = yaml.safe_load(
-        (persist_directory / "manifest.yaml").read_text(encoding="utf-8")
+        (db_directory / "manifest.yaml").read_text(encoding="utf-8")
     )
     assert str(added) in manifest["files"]
 

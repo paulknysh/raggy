@@ -38,11 +38,7 @@ def load_config(config_path: str = "config.yaml") -> dict[str, Any]:
 
     settings = RaggySettings(**cfg)
 
-    result = settings.model_dump()
-    # Preserve the historical public behavior: rerank_k defaults to retrieve_k.
-    if result["rerank_k"] is None:
-        result["rerank_k"] = result["retrieve_k"]
-    return result
+    return settings.model_dump()
 
 
 def ensure_models(
@@ -51,8 +47,8 @@ def ensure_models(
 ) -> None:
     """Pull every locally-run model ``cfg`` needs, before any of them is used.
 
-    Embeddings are always local, as is the cross-encoder when reranking is
-    enabled; the generation model only when ``llm_provider`` is ``ollama``.
+    Embeddings and the re-ranking cross-encoder are always local; the
+    generation model only when ``llm_provider`` is ``ollama``.
     All are pulled on demand by the pipeline anyway, but a first run downloads
     gigabytes, so a front end can call this up front with a ``progress``
     callback and report the download rather than stalling mid-question.
@@ -60,8 +56,7 @@ def ensure_models(
     ensure_ollama_model(cfg["embedding_model"], progress=progress)
     if cfg["llm_provider"] == "ollama":
         ensure_ollama_model(cfg["llm_model"], progress=progress)
-    if cfg["rerank_enabled"]:
-        ensure_reranker_model(cfg["rerank_model"], progress=progress)
+    ensure_reranker_model(cfg["rerank_model"], progress=progress)
 
 
 def _init_db(
@@ -75,12 +70,12 @@ def _init_db(
     ensure_ollama_model(cfg["embedding_model"], progress=progress)
 
     vectorstore = initialize_db(
-        persist_directory=cfg["persist_directory"],
+        db_directory=cfg["db_directory"],
         embedding_model=cfg["embedding_model"],
         sources=cfg["sources"],
         chunk_size=cfg["chunk_size"],
         chunk_overlap=cfg["chunk_overlap"],
-        batch_size=cfg["batch_size"],
+        embed_batch_size=cfg["embed_batch_size"],
         progress=progress,
     )
 
@@ -131,7 +126,7 @@ def refresh_db(
         chunk_overlap=cfg["chunk_overlap"],
         embedding_model=cfg["embedding_model"],
     )
-    if not db_needs_rebuild(cfg["persist_directory"], index_cfg):
+    if not db_needs_rebuild(cfg["db_directory"], index_cfg):
         return False
 
     if on_stale is not None:
@@ -179,13 +174,11 @@ def run_pipeline(
         llm_provider=cfg["llm_provider"],
         system_prompt=cfg["system_prompt"],
         retrieve_k=cfg["retrieve_k"],
-        temperature=cfg["temperature"],
-        rerank_enabled=cfg["rerank_enabled"],
+        llm_temperature=cfg["llm_temperature"],
         rerank_model=cfg["rerank_model"],
         rerank_k=cfg["rerank_k"],
         rerank_threshold=cfg["rerank_threshold"],
-        persist_directory=cfg["persist_directory"],
-        hybrid_search=cfg["hybrid_search"],
+        db_directory=cfg["db_directory"],
         hybrid_alpha=cfg["hybrid_alpha"],
         doc_sink=doc_sink,
         chat_history=chat_history,
@@ -233,13 +226,11 @@ def run_pipeline_stream(
         llm_provider=cfg["llm_provider"],
         system_prompt=cfg["system_prompt"],
         retrieve_k=cfg["retrieve_k"],
-        temperature=cfg["temperature"],
-        rerank_enabled=cfg["rerank_enabled"],
+        llm_temperature=cfg["llm_temperature"],
         rerank_model=cfg["rerank_model"],
         rerank_k=cfg["rerank_k"],
         rerank_threshold=cfg["rerank_threshold"],
-        persist_directory=cfg["persist_directory"],
-        hybrid_search=cfg["hybrid_search"],
+        db_directory=cfg["db_directory"],
         hybrid_alpha=cfg["hybrid_alpha"],
         doc_sink=collected,
         chat_history=chat_history,
