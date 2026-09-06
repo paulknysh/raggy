@@ -1,27 +1,27 @@
-# Database & Storage Configuration
+# Sources & DB Configuration
 sources:
   - ./sample_docs # demo folder
-  # - /Users/xyz/Downloads/my_docs1 # additional folder
-  # - /Users/xyz/Desktop/my_docs2/abc.pdf # additional file
+  # - /Users/xyz/Downloads/my_docs1 # your folder
+  # - /Users/xyz/Desktop/my_docs2/abc.pdf # your file
 
-db_directory: ./db # /Users/xyz/db
+db_directory: ./db # /Users/xyz/raggy_db
 
 embedding_model: "nomic-embed-text"
-chunk_size: 500
-chunk_overlap: 100
-embed_batch_size: 100
+chunk_size: 500 # chunk size in characters
+chunk_overlap: 100 # character overlap between adjacent chunks
+embed_batch_size: 100 # max number of chunks embedded per batch into Chroma
 
 # LLM Configuration
 llm_provider: "ollama" # "ollama" | "openai" | "anthropic" | "google"
 llm_model: "phi4-mini"
-llm_temperature: 0.0
+llm_temperature: 0.0 # keep at 0.0 for "cold" reproducible answers
 
-# RAG Pipeline Configuration
-retrieve_k: 50 # total chunks retrieved per query, split across the vector and BM25 retrievers
-hybrid_alpha: 0.5 # 1.0 = vector only, 0.0 = BM25 only
+# Pipeline Configuration
+retrieve_k: 50 # total chunks retrieved per query, split across the vector and lexical retrievers
+hybrid_alpha: 0.5 # fraction of retrieve_k used for vector retrieval (1.0 = vector only, 0.0 = lexical only)
 rerank_model: "cross-encoder/ms-marco-MiniLM-L6-v2"
-rerank_k: 5 # number of chunks after reranking
-rerank_threshold: 0.3 # drop reranked chunks scoring below this relevance (0.0 = disabled)
+rerank_k: 5 # number of chunks kept after reranking
+rerank_threshold: 0.3 # final relevance threshold below which chunks are dropped (0.0 = disabled)
 
 system_prompt: |
   You are a RAG (Retrieval-Augmented Generation) assistant answering a user's

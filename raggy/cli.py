@@ -324,13 +324,14 @@ def _run_turn(
         del chat_history[: -MEMORY_TURNS * 2]
 
 
-def run_chat(config_path: str = "config.yaml") -> None:
+def print_banner(config_path: str) -> None:
+    """Print the startup panel; reprinted by /clear, which wipes the screen."""
     console.print(
         Panel(
             f"[{ACCENT}]{LOGO}[/{ACCENT}]\n\n"
-            "using config located @ "
+            "Using config located @ "
             f"[{ACCENT}]{Path(config_path).resolve()}[/{ACCENT}]\n\n"
-            f"[{ACCENT}]/clear[/{ACCENT}] : reset conversation memory\n"
+            f"[{ACCENT}]/clear[/{ACCENT}] : start a new conversation (clear memory)\n"
             f"[{ACCENT}]/exit[/{ACCENT}]  : leave",
             border_style=ACCENT,
             box=SQUARE,
@@ -340,6 +341,10 @@ def run_chat(config_path: str = "config.yaml") -> None:
         )
     )
     console.print()
+
+
+def run_chat(config_path: str = "config.yaml") -> None:
+    print_banner(config_path)
 
     # The only unrecoverable failure: without a valid config there is nothing to
     # answer from, so fail here rather than on every question the user types.
@@ -366,7 +371,8 @@ def run_chat(config_path: str = "config.yaml") -> None:
             return
         if query in {"/clear", "clear"}:
             chat_history.clear()
-            console.print(f"[{ACCENT}]Conversation memory cleared.[/{ACCENT}]")
+            console.clear()
+            print_banner(config_path)
             continue
         if not query:
             continue

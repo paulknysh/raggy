@@ -1,11 +1,19 @@
 # raggy
 
-A lightweight Retrieval-Augmented Generation (RAG) CLI tool built with LangChain, Chroma, and Ollama. Hybrid database (vector + BM25 index) and embedding generation run fully locally. Answer generation can run either via a local LLM or using a cloud provider's API. The tool supports most common document formats and uses OCR automatically when needed.
+A lightweight CLI tool for Retrieval-Augmented Generation (RAG) built with LangChain, Chroma, and Ollama. Hybrid database (vector + BM25 index) and embedding generation run fully locally. Answer generation can run either via a local LLM or using a cloud provider's API. The tool supports most common document formats and uses OCR automatically when needed.
 
 These are all currently supported file formats (all other formats are ignored):
 
-`.pdf`, `.docx`, `.pptx`, `.txt`, `.md`, `.markdown`, `.html`, `.htm`, `.png`, `.jpg`, `.jpeg`, `.bmp`.
+| Type | Extensions |
+| --- | --- |
+| Documents | `.pdf`, `.docx`, `.pptx` |
+| Text | `.txt`, `.md`, `.markdown` |
+| Web | `.html`, `.htm` |
+| Images (OCR) | `.png`, `.jpg`, `.jpeg`, `.bmp` |
 
+Usage example -- the tool returns an answer (based on your documents), and citations along with their locations/scores:
+
+<img src="assets/cli_demo.png">
 
 ## Prerequisites
 
@@ -20,7 +28,7 @@ ollama
 ollama serve
 ```
 
-If an API key will be used for accessing an LLM remotely, a standard environment variable needs to be set (one of):
+If an API key will be used for accessing an LLM remotely, a standard environment variable needs to be set (one of the following):
 
 ```bash
 export GEMINI_API_KEY=...
@@ -57,7 +65,7 @@ To be able to use raggy programmatically (as a library):
 ```bash
 uv sync
 
-# if you modify/test code, this runs lint/format/tests
+# if you modify/test code, this command runs linting/formatting/tests
 make sure
 ```
 
@@ -69,25 +77,19 @@ First, run this command:
 make config
 ```
 
-It creates your own user config (`config.yaml`) where all your execution parameters live. For a detailed overview of all config parameters, see [Configuration](#configuration).
+It creates your own user config (`config.yaml`) where all your execution parameters live. For a detailed overview of all config parameters, see [Configuration](#configuration). While `config.yaml` comes with defaults you can test, you should populate `sources` (your input folders/files) and `db_directory` (DB location) sections with your preferred paths.
 
-`config.yaml` comes with defaults you can test. Populate `sources` (your input folders/files) and `db_directory` (DB location) sections with your preferred paths.
-
-**Important:** Relative paths in `config.yaml` resolve against the current working directory, so keep that in mind if you want to run CLI tool from other locations. To be safe, just always use absolute paths in config.
-
-To start the CLI, use the `raggy` command followed by the path to your config file:
+To start the CLI, use the `raggy <path-to-config-file>` command:
 
 ```bash
 raggy config.yaml
 ```
 
-The path can point anywhere (e.g. `raggy path/to/other_config.yaml`), so several configs can live side by side:
+> [!IMPORTANT]
+> CLI automatically pulls all models listed in `config.yaml` and (re-)indexes your documents -- this might take a while on the first run, depending on models chosen, document count/size, and whether OCR is needed (scans, images, etc).
 
-**Important:** CLI automatically pulls all models listed in `config.yaml` and (re-)indexes your documents -- this might take a while on the first run, depending on models chosen, document count/size and whether OCR is needed (scans, images etc).
-
-Below is a screenshot of the CLI. For each query, it returns an answer, citations, their corresponding relevance scores, and locations:
-
-<img src="assets/cli_demo.png">
+> [!IMPORTANT]
+> Relative paths in `config.yaml` resolve against the current working directory, so keep that in mind if you want to run the CLI tool from other locations. To be safe, just always use absolute paths in your config.
 
 ## Usage (programmatic)
 
@@ -109,7 +111,7 @@ for i, doc in enumerate(retrieved_docs, 1):
 
 ## Configuration
 
-All runtime settings available in config file:
+All runtime settings are defined in the config file:
 
 | Setting | Description |
 | --- | --- |
@@ -118,54 +120,58 @@ All runtime settings available in config file:
 | `embedding_model` | Ollama embedding model (e.g. `nomic-embed-text`) |
 | `chunk_size` | chunk size in characters |
 | `chunk_overlap` | character overlap between adjacent chunks |
-| `embed_batch_size` | max number of chunks embedded per batch into Chroma (`100` in the shipped config); the number of batches is derived dynamically from the chunk count |
+| `embed_batch_size` | max number of chunks embedded per batch into Chroma (`100` in the shipped config); the number of batches is derived automatically |
 | `llm_provider` | where generation runs: `ollama` (local, the shipped value) or `openai`/`anthropic`/`google` (via API) |
 | `llm_model` | chat model for generation (e.g. `phi4-mini` locally, or a remote model name like `gemini-3.7-flash`) |
 | `llm_temperature` | LLM sampling temperature |
-| `retrieve_k` | total chunks retrieved per query, split across the dense and BM25 passes (`50` in the shipped config) |
-| `hybrid_alpha` | share of `retrieve_k` spent on the dense/vector pass; the remainder goes to BM25 (`1.0` = vector only, `0.0` = BM25 only, `0.5` in the shipped config) |
+| `retrieve_k` | total chunks retrieved per query, split across the dense and lexical retrievals (`50` in the shipped config) |
+| `hybrid_alpha` | fraction of `retrieve_k` spent on the vector retrieval; the remainder goes to lexical (`1.0` = vector only, `0.0` = lexical only, `0.5` in the shipped config) |
 | `rerank_model` | Hugging Face ID of the cross-encoder model |
-| `rerank_k` | final number of chunks returned by the cross-encoder (must be `<= retrieve_k`) |
-| `rerank_threshold` | drop reranked chunks whose relevance score is below this value (`0.0` = disabled, `0.3` in the shipped config) |
+| `rerank_k` | number of chunks returned by the cross-encoder (must be `<= retrieve_k`) |
+| `rerank_threshold` | drops reranked chunks whose relevance score is below this value (`0.0` = disabled, `0.3` in the shipped config) |
 | `system_prompt` | system prompt dictating how the LLM should answer; must contain a `{context}` placeholder |
 
-Every setting above is required, and unknown keys are rejected. There are no
-fallback values in the code: `config.yaml` is the complete runtime state, and
-the values quoted above are simply what `make config` writes -- not what you
-get by leaving a setting out. Omitting a setting, misspelling one, or leaving
-behind a key from an older version all fail at startup with the offending
-names listed, rather than silently running with a value you did not choose.
+> [!IMPORTANT]
+> The current default config parameters were tested on a basic MacBook Air with 8GB RAM. Switching to much heavier local models likely needs appropriate GPU/memory.
 
-Retrieval always runs in two stages, so there is nothing to switch on. Every
-query is answered by a hybrid search -- a dense pass over the vector store plus
-a lexical BM25 pass -- whose results are merged by reciprocal rank fusion and
-then re-scored by a cross-encoder.
+> [!IMPORTANT]
+> Chroma doesn't seem to be able to embed all chunks in one go; therefore, `embed_batch_size` was introduced so it's done in batches instead. 100 seems like a reasonable default, but if you get Chroma errors during embedding (`Error: Post "http://127.0.0.1:50175/tokenize": EOF (status code: 400)`), try lowering `embed_batch_size` even further.
 
-The two numbers worth knowing are `retrieve_k` and `rerank_k`. `retrieve_k` is
-the total candidate budget and the main cost lever, since the cross-encoder
-scores every candidate it returns; `rerank_k` is how many chunks survive into
-the prompt, and is the number to raise if answers look like they are missing
-context. `hybrid_alpha` only decides how the fixed `retrieve_k` budget is
-divided between the two passes, so moving it costs nothing: lower it for
-corpora where exact tokens matter (code, identifiers, part numbers, legal
-citations) and raise it for prose where questions paraphrase the source.
+## Pipeline
 
-## Demo dataset
+Below are the main steps in the RAG pipeline (assuming the DB is already created):
 
-This article (https://arxiv.org/abs/2608.06223v1) is used here for testing. It's an 8-page document -- each page is saved in different file formats (including PDF, plaintext, images, MS Word) and saved inside the `sample_docs` directory. This directory is specified in `config.yaml` by default.
+**[1] Hybrid retrieval.** `retrieve_k` is a total *candidate budget*, split by
+`hybrid_alpha` between two retrievals over the whole corpus:
 
-## Demo eval
+- **dense** retrieval -- nearest chunks in Chroma by embedding similarity (good at
+  paraphrase and synonyms);
+- **lexical** retrieval -- the persisted `bm25s` index (good at exact terms:
+  identifiers, names, acronyms, numbers).
 
-`eval` folder currently contains a basic harness to test pipeline performance on the demo dataset. You can run it by:
+So `retrieve_k: 50` with `hybrid_alpha: 0.5` takes 25 chunks from each arm. The two
+ranked lists are merged by **reciprocal rank fusion**, which collapses duplicates and
+needs no score calibration between the two very different scales. Fusion weights are
+uniform on purpose: `hybrid_alpha` already sets each arm's influence by deciding how
+many candidates it contributes.
 
-```bash
-uv run eval/run_eval.py
-```
+**[2] Cross-encoder reranking.** Stage 1 favors recall and is noisy. The reranker
+(`rerank_model`, run locally on onnxruntime) pushes the query and the chunk through
+the model *together* and emits one relevance score per pair -- far sharper than
+cosine distance between separately embedded texts, and affordable on ~50 chunks
+though not on the whole corpus. The top `rerank_k` chunks survive.
 
-It computes basic retrieval/generation metrics and produces a summary (both printed and saved to `eval/results.json`). The Q&A pairs are about `sample_docs`, so the harness always runs against `default_config/default_config.yaml` rather than your own `config.yaml`.
+**[3] Score threshold.** Each chunk carries its reranker score in
+`doc.metadata["relevance_score"]`, and anything below `rerank_threshold` is dropped.
+This keeps `rerank_k` from polluting the context when the corpus has no good answer;
+`0.0` disables it.
 
+**[4] Generation.** The survivors are concatenated into `{context}` in
+`system_prompt` and sent to the configured LLM, along with the chat history (in chat
+mode) and the question. The exact chunks the model saw are returned to the caller --
+`retrieved_docs` above, and the source table the CLI prints.
 
-## The DB management
+## The DB mechanics
 
 DB creates/updates itself automatically, so you don't need to think about it. Below is just a high-level overview of the mechanics.
 
@@ -202,6 +208,19 @@ The BM25 index has no incremental update path, so it is rebuilt after every upda
 from the chunks already stored in Chroma, which needs no embedding calls and no
 re-reading of source files. This should be very fast anyway.
 
+## Demo dataset
+
+This article (https://arxiv.org/abs/2608.06223v1) is used here as a demo dataset. It's an 8-page document -- each page is saved in different file formats (including PDF, plaintext, images, MS Office) and saved inside the `sample_docs` directory. This directory is specified in `config.yaml` by default.
+
+## Demo eval
+
+`eval` folder currently contains a basic harness to test pipeline performance on the demo dataset. You can run it by:
+
+```bash
+uv run eval/run_eval.py
+```
+
+It computes basic retrieval/generation metrics and produces a summary (both printed and saved to `eval/results.json`). The Q&A pairs are about `sample_docs`, so the harness always runs against `default_config/default_config.yaml` rather than your own `config.yaml`.
 
 ## TODOs
 
@@ -213,7 +232,7 @@ re-reading of source files. This should be very fast anyway.
 - [ ] UX/UI tuning of CLI (improved commands/statuses, etc)
 - [ ] Performance optimizations (DB creation/update, pipeline execution)
 
-If something cool is missing, feel free to open an issue or a PR.
+If some features are not working or missing, feel free to open an issue or a PR.
 
 ## License
 
