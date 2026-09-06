@@ -47,18 +47,19 @@ def _get_ocr_engine():
     """Return a lazily-initialized shared RapidOCR engine instance."""
     global _ocr_engine
     if _ocr_engine is None:
-        from rapidocr_onnxruntime import RapidOCR
+        from rapidocr import RapidOCR
 
-        _ocr_engine = RapidOCR()
+        # RapidOCR logs every model load at INFO; keep it out of the CLI output.
+        _ocr_engine = RapidOCR(params={"Global.log_level": "error"})
     return _ocr_engine
 
 
 def _ocr_image_bytes(image_bytes: bytes) -> str:
     """Run OCR on raw image bytes and return the recognized text."""
-    result, _ = _get_ocr_engine()(image_bytes)
-    if not result:
+    result = _get_ocr_engine()(image_bytes)
+    if not result.txts:
         return ""
-    return "\n".join(line[1] for line in result if line[1])
+    return "\n".join(text for text in result.txts if text)
 
 
 def _load_image(path: Path) -> list[Document]:
