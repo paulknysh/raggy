@@ -27,7 +27,7 @@ dependencies = [
     "langchain-core",
     "langchain-classic",
     "ollama",
-    "pypdf",
+    "pypdf[fonts]",
     "PyYAML",
     "pydantic>=2.0.0",
     "tqdm",
