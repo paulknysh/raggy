@@ -1,6 +1,10 @@
 # raggy
 
-A lightweight CLI tool for Retrieval-Augmented Generation (RAG) built with LangChain, Chroma, and Ollama. Hybrid database (vector + BM25 index) and embedding generation run fully locally. Answer generation can run either via a local LLM or using a cloud provider's API. The tool supports most common document formats and uses OCR automatically when needed.
+A lightweight CLI tool for Retrieval-Augmented Generation (RAG) over local documents built with LangChain, Chroma, and Ollama. Hybrid database (vector + BM25 index) and embedding generation run fully locally. Answer generation can run either via a local LLM or remotely using an API key. `raggy` supports most common document formats and handles images/scans automatically via OCR.
+
+Usage example -- CLI returns an answer based on your documents, and citations along with their locations and relevance scores:
+
+<img src="assets/cli_demo.png">
 
 These are all currently supported file formats (all other formats are ignored):
 
@@ -10,10 +14,6 @@ These are all currently supported file formats (all other formats are ignored):
 | Text | `.txt`, `.md`, `.markdown` |
 | Web | `.html`, `.htm` |
 | Images (OCR) | `.png`, `.jpg`, `.jpeg`, `.bmp` |
-
-Usage example -- the tool returns an answer (based on your documents), and citations along with their locations/scores:
-
-<img src="assets/cli_demo.png">
 
 ## Prerequisites
 
@@ -50,7 +50,7 @@ Clone the repo:
 git clone https://github.com/paulknysh/raggy.git && cd raggy
 ```
 
-To install the CLI tool only:
+Then install using:
 
 ```bash
 # with uv
@@ -60,14 +60,7 @@ uv tool install -e .
 pipx install -e .
 ```
 
-To be able to use raggy programmatically (as a library):
-
-```bash
-uv sync
-
-# if you modify/test code, this command runs linting/formatting/tests
-make sure
-```
+For now, cloning + editable install is picked as a preferred installation method, as it allows you to experiment with the demo dataset, run the eval harness, and edit/debug code if needed. In the future, direct install via `uv tool install git+https ...`/`pipx install git+https ...` will be used instead.
 
 ## Usage (CLI)
 
@@ -89,7 +82,7 @@ raggy config.yaml
 > CLI automatically pulls all models listed in `config.yaml` and (re-)indexes your documents -- this might take a while on the first run, depending on models chosen, document count/size, and whether OCR is needed (scans, images, etc).
 
 > [!IMPORTANT]
-> Relative paths in `config.yaml` resolve against the current working directory, so keep that in mind if you want to run the CLI tool from other locations. To be safe, just always use absolute paths in your config.
+> Relative paths in `config.yaml` resolve against the current directory (from where `raggy` command is executed). Keep that in mind if you want to run `raggy` from other locations. To be safe, just always use absolute paths in your config file.
 
 ## Usage (programmatic)
 
@@ -126,16 +119,16 @@ All runtime settings are defined in the config file:
 | `llm_temperature` | LLM sampling temperature |
 | `retrieve_k` | total chunks retrieved per query, split across the dense and lexical retrievals (`50` in the shipped config) |
 | `hybrid_alpha` | fraction of `retrieve_k` spent on the vector retrieval; the remainder goes to lexical (`1.0` = vector only, `0.0` = lexical only, `0.5` in the shipped config) |
-| `rerank_model` | Hugging Face ID of the cross-encoder model |
+| `rerank_model` | Hugging Face ID of the cross-encoder model (e.g. `cross-encoder/ms-marco-MiniLM-L6-v2`) |
 | `rerank_k` | number of chunks returned by the cross-encoder (must be `<= retrieve_k`) |
 | `rerank_threshold` | drops reranked chunks whose relevance score is below this value (`0.0` = disabled, `0.3` in the shipped config) |
 | `system_prompt` | system prompt dictating how the LLM should answer; must contain a `{context}` placeholder |
 
-> [!IMPORTANT]
-> The current default config parameters were tested on a basic MacBook Air with 8GB RAM. Switching to much heavier local models likely needs appropriate GPU/memory.
+Notes:
 
-> [!IMPORTANT]
-> Chroma doesn't seem to be able to embed all chunks in one go; therefore, `embed_batch_size` was introduced so it's done in batches instead. 100 seems like a reasonable default, but if you get Chroma errors during embedding (`Error: Post "http://127.0.0.1:50175/tokenize": EOF (status code: 400)`), try lowering `embed_batch_size` even further.
+- The current default config parameters were tested on a basic MacBook Air with 8GB RAM. Switching to much heavier local models likely needs appropriate GPU/memory.
+
+- Chroma doesn't seem to be able to embed all chunks in one go; therefore, `embed_batch_size` was introduced so it's done in batches instead. 100 seems like a reasonable default, but if you get Chroma errors during embedding (such as `Error: Post "http://127.0.0.1:50175/tokenize": EOF (status code: 400)`), try lowering `embed_batch_size` further.
 
 ## Pipeline
 
