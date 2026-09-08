@@ -257,6 +257,8 @@ def _run_turn(
     a partial answer is left on screen for the user to read but kept out of the
     context of later turns.
     """
+    console.print()
+
     doc_sink: list = []
     try:
         cfg = load_config(config_path)

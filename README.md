@@ -64,13 +64,13 @@ For now, cloning + editable install is picked as a preferred installation method
 
 ## Usage (CLI)
 
-First, run this command:
+First, run this command inside the cloned repo:
 
 ```bash
 make config
 ```
 
-It creates your own user config (`config.yaml`) where all your execution parameters live. For a detailed overview of all config parameters, see [Configuration](#configuration). While `config.yaml` comes with defaults you can test, you should populate `sources` (your input folders/files) and `db_directory` (DB location) sections with your preferred paths.
+It creates your own user config (`config.yaml`) where all your execution parameters live. While `config.yaml` comes with defaults you can test, you should populate `sources` (your input folders/files) and `db_directory` (DB location) sections with your preferred paths. For a detailed overview of all config parameters, see [Configuration](#configuration).
 
 To start the CLI, use the `raggy <path-to-config-file>` command:
 
