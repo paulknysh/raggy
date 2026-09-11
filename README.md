@@ -215,15 +215,7 @@ uv run eval/run_eval.py
 
 It computes basic retrieval/generation metrics and produces a summary (both printed and saved to `eval/results.json`). The Q&A pairs are about `sample_docs`, so the harness always runs against `default_config/default_config.yaml` rather than your own `config.yaml`.
 
-## TODOs
-
-- [x] Incremental indexing (only re-embed files that changed)
-- [x] Hybrid retrieval, tuning config defaults
-- [x] Support for popular LLM providers via API keys
-- [x] Conversation memory in chat mode
-- [x] Pydantic validation of config file
-- [ ] UX/UI tuning of CLI (improved commands/statuses, etc)
-- [ ] Performance optimizations (DB creation/update, pipeline execution)
+## Contributing
 
 If some features are not working or missing, feel free to open an issue or a PR.
 
